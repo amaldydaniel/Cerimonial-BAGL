@@ -10,7 +10,7 @@
  * 4. Tratamento resiliente de falhas de cache e rede (Cache-First com fallback para rede e página principal).
  */
 
-const CACHE_VERSION = 'v1.5.0';
+const CACHE_VERSION = 'v1.6.0-sync';
 const STATIC_CACHE_NAME = `cerimonial-bagl-static-${CACHE_VERSION}`;
 
 const STATIC_ASSETS = [
@@ -43,6 +43,7 @@ const STATIC_ASSETS = [
   './js/modules/nominata.js',
   './js/modules/pdf-importer.js',
   './js/modules/pwa.js',
+  './js/modules/sync.js',
   './js/app.js'
 ];
 
