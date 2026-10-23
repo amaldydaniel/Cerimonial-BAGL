@@ -1974,6 +1974,13 @@
     }
 
     setupEvents();
+    if (window.CerimonialSync) {
+  window.CerimonialSync.init(state, () => {
+    updateCounters();
+    renderCards();
+    window.CerimonialNominata.renderNominata(state);
+  });
+}
     updateCounters();
     renderCards();
     window.CerimonialNominata.renderNominata(state);
