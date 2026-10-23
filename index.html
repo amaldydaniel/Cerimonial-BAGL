@@ -1,0 +1,908 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#0B1D3A">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Cerimonial BAGL">
+  <meta name="application-name" content="Cerimonial BAGL">
+  <meta name="description" content="Sistema de Controle de Presença de Autoridades (Carômetro) e Geração de Nominata Oficial — Base Aérea do Galeão (BAGL).">
+  <title>Cerimonial BAGL — Carômetro & Nominata Oficial</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" type="image/png" sizes="192x192" href="assets/img/icon-192.png">
+  <link rel="apple-touch-icon" sizes="180x180" href="assets/img/icon-180.png">
+  <script src="assets/libs/tailwind.min.js"></script>
+  <script src="assets/libs/pdf.min.js"></script>
+  <link rel="stylesheet" href="assets/css/styles.css">
+</head>
+<body class="bg-slate-100 text-slate-900 min-h-screen flex flex-col antialiased selection:bg-amber-200">
+
+  <!-- TOP HEADER / NAV -->
+  <header class="no-print bg-[#0B1D3A] text-white sticky top-0 z-40 border-b border-[#162E54] shadow-md">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex flex-wrap items-center justify-between gap-3">
+      
+      <!-- Logo & Event Info -->
+      <div class="flex items-center gap-3">
+        <img src="assets/img/emblema-bagl.png" alt="Emblema BAGL" class="h-10 sm:h-12 w-auto object-contain flex-shrink-0">
+        <div>
+          <div class="flex items-center gap-2">
+            <span class="text-xs uppercase tracking-wider font-semibold text-amber-400">Cerimonial & Protocolo</span>
+            <span id="header-event-badge" class="text-xs bg-[#132C54] text-blue-200 px-1.5 py-0.5 rounded border border-[#1F4277]">BAGL • EVENTO CERIMONIAL</span>
+          </div>
+          <h1 class="text-base sm:text-lg font-bold leading-tight">Chamada & Nominata Oficial</h1>
+        </div>
+      </div>
+
+      <!-- Live Counters -->
+      <div class="flex items-center gap-2 sm:gap-4 bg-[#102A52]/90 px-3 py-1.5 rounded-lg border border-[#1C4179] text-xs sm:text-sm">
+        <div class="text-center px-1">
+          <div class="text-blue-200 text-[10px] sm:text-xs uppercase font-medium">Cadastrados</div>
+          <div id="stat-total" class="font-bold text-white text-sm sm:text-base">0</div>
+        </div>
+        <div class="w-px h-6 bg-[#1C4179]"></div>
+        <div class="text-center px-1">
+          <div class="text-emerald-400 text-[10px] sm:text-xs uppercase font-medium">Presentes</div>
+          <div id="stat-present" class="font-bold text-emerald-400 text-sm sm:text-base">0</div>
+        </div>
+        <div class="w-px h-6 bg-[#1C4179]"></div>
+        <div class="text-center px-1">
+          <div class="text-blue-200 text-[10px] sm:text-xs uppercase font-medium">Ausentes</div>
+          <div id="stat-absent" class="font-bold text-slate-300 text-sm sm:text-base">0</div>
+        </div>
+        <div class="w-px h-6 bg-[#1C4179]"></div>
+        <div class="text-center px-1">
+          <div class="text-amber-400 text-[10px] sm:text-xs uppercase font-medium">Avulsos</div>
+          <div id="stat-manual" class="font-bold text-amber-400 text-sm sm:text-base">0</div>
+        </div>
+      </div>
+
+      <!-- Quick Actions -->
+      <div class="flex items-center gap-2">
+        <button id="btn-add-manual" class="inline-flex items-center gap-1.5 bg-amber-600 hover:bg-amber-500 active:bg-amber-700 text-white font-medium text-xs sm:text-sm px-3 py-2 rounded-lg shadow-sm transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+          </svg>
+          <span>+ Adicionar Avulso</span>
+        </button>
+
+        <button id="btn-open-nominata" class="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-semibold text-xs sm:text-sm px-3 py-2 rounded-lg shadow-md transition">
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+          </svg>
+          <span>Gerar Nominata</span>
+        </button>
+      </div>
+
+    </div>
+
+    <!-- SUB-BAR / TABS -->
+    <div class="bg-[#07152B] px-4 sm:px-6 border-t border-[#162E54] flex flex-wrap items-center justify-between gap-2 overflow-x-auto text-xs">
+      <div class="flex space-x-1 sm:space-x-4 py-2">
+        <button id="tab-btn-carometro" class="px-3 py-1.5 rounded-md font-medium text-white bg-[#132F5B] transition flex items-center gap-1.5 border border-[#20457E]">
+          <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2V6zM14 6a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2V6zM4 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2H6a2 2 0 01-2-2v-2zM14 16a2 2 0 012-2h2a2 2 0 012 2v2a2 2 0 01-2 2h-2a2 2 0 01-2-2v-2z"/>
+          </svg>
+          <span>1. Chamada Visual (Carômetro)</span>
+        </button>
+
+        <button id="tab-btn-nominata" class="px-3 py-1.5 rounded-md font-medium text-blue-200/70 hover:text-white hover:bg-[#132F5B] transition flex items-center gap-1.5">
+          <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 20H5a2 2 0 01-2-2V6a2 2 0 012-2h10a2 2 0 012 2v1m2 13a2 2 0 01-2-2V7m2 13a2 2 0 002-2V9a2 2 0 00-2-2h-2m-4-3H9M7 16h6M7 8h6v4H7V8z"/>
+          </svg>
+          <span>2. Documento da Nominata</span>
+        </button>
+      </div>
+
+      <!-- Quick Reset, Backup, PDF Import, PWA Status & Settings -->
+      <div class="flex items-center gap-1.5 sm:gap-2 py-1.5">
+        <span id="pwa-connection-badge" class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium bg-[#132F5B] text-emerald-300 border border-[#20457E]" title="Conectado — Aplicativo preparado para operar offline sem internet">
+          <span id="pwa-connection-dot" class="w-2 h-2 rounded-full bg-emerald-400"></span>
+          <span id="pwa-connection-label">Offline Pronto</span>
+        </span>
+
+        <button id="btn-install-pwa" class="hidden bg-amber-500 hover:bg-amber-400 text-slate-950 font-bold transition px-2.5 py-1 rounded shadow-sm text-[11px] flex items-center gap-1" title="Instalar aplicativo Cerimonial BAGL neste dispositivo">
+          <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          <span>Instalar App</span>
+        </button>
+
+        <button id="btn-import-pdf-carometro" class="bg-blue-700 hover:bg-blue-600 text-white font-medium transition px-2.5 py-1 rounded shadow-sm text-[11px] flex items-center gap-1 border border-blue-500" title="Importar novo Carômetro em formato PDF com conferência prévia">
+          <svg class="w-3.5 h-3.5 text-amber-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+          </svg>
+          <span>Importar Carômetro PDF</span>
+        </button>
+        <input type="file" id="input-import-pdf-carometro" accept=".pdf,application/pdf" class="hidden">
+
+        <div class="w-px h-4 bg-[#162E54] hidden sm:block"></div>
+
+        <button id="btn-export-backup" class="text-blue-200 hover:text-emerald-300 transition px-2 py-1 rounded hover:bg-[#132F5B] text-[11px] flex items-center gap-1" title="Exportar backup completo em arquivo JSON">
+          <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+          </svg>
+          <span>Exportar Backup</span>
+        </button>
+
+        <button id="btn-import-backup" class="text-blue-200 hover:text-amber-300 transition px-2 py-1 rounded hover:bg-[#132F5B] text-[11px] flex items-center gap-1" title="Restaurar dados a partir de um arquivo de backup JSON">
+          <svg class="w-3.5 h-3.5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+          </svg>
+          <span>Restaurar Backup</span>
+        </button>
+        <input type="file" id="input-import-backup" accept=".json,application/json" class="hidden">
+
+        <div class="w-px h-4 bg-[#162E54] hidden sm:block"></div>
+
+        <button id="btn-quick-confirm-preset" class="hidden text-blue-200 hover:text-amber-300 transition px-2 py-1 rounded hover:bg-[#132F5B] text-[11px] flex items-center gap-1" title="Restaurar confirmações prévias de presença">
+          <svg class="w-3 h-3 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+          </svg>
+          <span class="hidden md:inline">Restaurar Confirmações Prévias</span>
+        </button>
+
+        <button id="btn-open-modal-reset" class="text-rose-400 hover:text-rose-300 transition px-2 py-1 rounded hover:bg-[#132F5B] text-[11px] flex items-center gap-1">
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          </svg>
+          <span>Zerar Presenças</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- BANNER DE ATUALIZAÇÃO SEGURA DA PWA (Sem recarregamento automático) -->
+    <div id="pwa-update-banner" class="hidden bg-amber-500 text-slate-950 px-4 sm:px-6 py-2 text-xs font-medium flex flex-wrap items-center justify-between gap-2 border-t border-amber-400 shadow-inner">
+      <div class="flex items-center gap-2">
+        <svg class="w-4 h-4 text-slate-900 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+        </svg>
+        <span><strong>Nova versão do Cerimonial BAGL disponível!</strong> Os dados atuais de presença no IndexedDB serão integralmente preservados.</span>
+      </div>
+      <div class="flex items-center gap-2 ml-auto">
+        <button type="button" id="btn-pwa-dismiss-update" class="px-2.5 py-1 rounded bg-amber-600/20 hover:bg-amber-600/30 text-slate-900 font-semibold transition">
+          Depois
+        </button>
+        <button type="button" id="btn-pwa-apply-update" class="px-3 py-1 rounded bg-[#0B1D3A] hover:bg-[#162E54] text-white font-bold shadow transition">
+          Atualizar Agora
+        </button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN CONTAINER -->
+  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 flex flex-col gap-6">
+
+    <!-- VIEW 1: CARÔMETRO INTERATIVO -->
+    <section id="view-carometro" class="flex flex-col gap-4">
+      
+      <!-- FILTERS & SEARCH TOOLBAR -->
+      <div class="no-print bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-col md:flex-row items-stretch md:items-center justify-between gap-4">
+        
+        <!-- Search Input -->
+        <div class="relative flex-1">
+          <div class="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none text-slate-400">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+            </svg>
+          </div>
+          <input 
+            type="text" 
+            id="search-input" 
+            placeholder="Buscar por nome, guerra, cargo, posto ou precedência (ex: #1, #14, Comandante)..." 
+            class="w-full pl-10 pr-10 py-2.5 bg-slate-50 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500 focus:bg-white transition"
+          >
+          <button id="btn-clear-search" class="hidden absolute inset-y-0 right-0 pr-3 flex items-center text-slate-400 hover:text-slate-600">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+            </svg>
+          </button>
+        </div>
+
+        <!-- Filter Chips -->
+        <div class="flex items-center gap-1.5 overflow-x-auto pb-1 md:pb-0 text-xs">
+          <button class="filter-chip active px-3 py-2 rounded-lg font-medium bg-[#0B1D3A] text-white transition flex-shrink-0" data-filter="all">
+            Todos (<span id="count-chip-all">0</span>)
+          </button>
+          <button class="filter-chip px-3 py-2 rounded-lg font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition flex-shrink-0" data-filter="present">
+            Presentes (<span id="count-chip-present" class="text-emerald-700 font-bold">0</span>)
+          </button>
+          <button class="filter-chip px-3 py-2 rounded-lg font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition flex-shrink-0" data-filter="absent">
+            Ausentes (<span id="count-chip-absent">0</span>)
+          </button>
+          <button class="filter-chip px-3 py-2 rounded-lg font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition flex-shrink-0" data-filter="generais">
+            Oficiais-Generais
+          </button>
+          <button class="filter-chip px-3 py-2 rounded-lg font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition flex-shrink-0" data-filter="manual">
+            Avulsos (<span id="count-chip-manual">0</span>)
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Instruction Banner -->
+      <div class="no-print bg-amber-50 border border-amber-200 rounded-lg p-3 text-xs sm:text-sm text-amber-900 flex items-start sm:items-center justify-between gap-3">
+        <div class="flex items-center gap-2">
+          <span class="text-amber-600 flex-shrink-0">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+            </svg>
+          </span>
+          <div>
+            <strong>Instrução da Recepção:</strong> Toque ou clique no cartão da autoridade para marcar 
+            <span class="text-emerald-700 font-bold">PRESENÇA (VERDE)</span> conforme ela chegar. 
+            A <strong>Nominata</strong> final manterá automaticamente a <strong>Ordem de Precedência Oficial</strong>, independentemente da ordem cronológica de chegada!
+          </div>
+        </div>
+      </div>
+
+      <!-- CARDS GRID -->
+      <div id="cards-container" class="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3.5 sm:gap-4">
+        <!-- Rendered dynamically -->
+      </div>
+
+      <!-- Empty State -->
+      <div id="empty-state" class="hidden bg-white p-10 sm:p-12 text-center rounded-xl border border-slate-200 shadow-sm">
+        <svg class="w-12 h-12 text-slate-300 mx-auto mb-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+        </svg>
+        <p id="empty-state-message" class="text-slate-700 font-semibold text-sm sm:text-base">Nenhum carômetro carregado neste dispositivo.</p>
+        <p id="empty-state-submessage" class="text-slate-500 text-xs mt-1 max-w-md mx-auto">Utilize os botões <strong>"Importar Carômetro PDF"</strong> ou <strong>"Restaurar Backup"</strong> na barra superior para carregar as autoridades do evento localmente.</p>
+        <button id="btn-reset-filters" class="mt-4 text-xs text-amber-700 hover:underline font-semibold">Limpar filtros de busca</button>
+      </div>
+
+    </section>
+
+    <!-- VIEW 2: NOMINATA OFICIAL (DOCUMENTO GERADO) -->
+    <section id="view-nominata" class="hidden flex flex-col gap-6">
+      
+      <!-- Nominata Control Bar -->
+      <div class="no-print bg-white p-4 rounded-xl border border-slate-200 shadow-sm flex flex-wrap items-center justify-between gap-4">
+        
+        <div class="flex items-center gap-3">
+          <button id="btn-back-to-carometro" class="inline-flex items-center gap-1.5 px-3 py-2 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs sm:text-sm font-medium transition">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+            </svg>
+            <span>Voltar à Chamada</span>
+          </button>
+
+          <!-- Toggle View Mode -->
+          <div class="bg-slate-100 p-1 rounded-lg flex items-center text-xs">
+            <button id="mode-present-only" class="px-3 py-1.5 rounded-md font-semibold bg-white text-slate-900 shadow-sm transition">
+              Apenas Presentes (Roteiro Locução)
+            </button>
+            <button id="mode-full-annotated" class="px-3 py-1.5 rounded-md font-medium text-slate-600 hover:text-slate-900 transition">
+              Conferência Geral (Com Marcador &lt;-)
+            </button>
+          </div>
+        </div>
+
+        <!-- Export Buttons -->
+        <div class="flex items-center gap-2">
+          <button id="btn-copy-nominata" class="inline-flex items-center gap-1.5 bg-slate-800 hover:bg-slate-700 text-white font-medium text-xs sm:text-sm px-3 py-2 rounded-lg transition shadow-sm" title="Copiar texto simples para área de transferência">
+            <svg class="w-4 h-4 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 5H6a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2v-1M8 5a2 2 0 002 2h2a2 2 0 002-2M8 5a2 2 0 012-2h2a2 2 0 012 2m0 0h2a2 2 0 012 2v3m2 4H10m0 0l3-3m-3 3l3 3"/>
+            </svg>
+            <span>Copiar Texto</span>
+          </button>
+
+          <button id="btn-download-word" class="inline-flex items-center gap-1.5 bg-blue-700 hover:bg-blue-600 text-white font-medium text-xs sm:text-sm px-3 py-2 rounded-lg transition shadow-sm" title="Baixar documento editável no formato Word (.doc)">
+            <svg class="w-4 h-4 text-blue-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+            </svg>
+            <span>Baixar Word (.doc)</span>
+          </button>
+
+          <button id="btn-print-nominata" class="inline-flex items-center gap-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-semibold text-xs sm:text-sm px-3.5 py-2 rounded-lg transition shadow-md" title="Imprimir diretamente ou Salvar como PDF">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z"/>
+            </svg>
+            <span>Imprimir / Gerar PDF</span>
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Precedence Order Notice -->
+      <div class="no-print bg-emerald-50 border border-emerald-200 rounded-lg p-3 text-xs sm:text-sm text-emerald-950 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <svg class="w-5 h-5 text-emerald-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/>
+          </svg>
+          <span>
+            <strong>Ordem Protocolar Aplicada:</strong> Os presentes estão organizados estritamente na <strong>Ordem de Precedência</strong> do Carômetro (ex: 1º, 3º, 5º...), conforme a tradição militar.
+          </span>
+        </div>
+        <span id="nominata-count-badge" class="font-bold text-xs bg-emerald-200 text-emerald-900 px-2.5 py-1 rounded-full">
+          0 Autoridades Presentes
+        </span>
+      </div>
+
+      <!-- PRINTABLE DOCUMENT (A4 PREVIEW) -->
+      <div class="bg-white rounded-xl shadow-lg border border-slate-300 p-6 sm:p-12 max-w-4xl mx-auto w-full" id="print-nominata-area">
+        
+        <!-- Document Header (Strict Military Standard) -->
+        <div class="text-center mb-8 pb-4 border-b border-slate-300">
+          <div class="font-bold tracking-widest text-xs sm:text-sm uppercase text-slate-800">Comando da Aeronáutica</div>
+          <div class="font-semibold tracking-wider text-xs uppercase text-slate-700">Comando de Preparo</div>
+          <div class="font-bold tracking-widest text-xs uppercase text-slate-900">BAGL</div>
+          
+          <div id="nominata-doc-subtitle-1" class="mt-4 font-bold text-xs sm:text-sm tracking-wide uppercase text-slate-900">
+            Dia da Força Aérea Brasileira e Dia do Aviador
+          </div>
+          <div id="nominata-doc-subtitle-2" class="font-bold text-xs sm:text-sm tracking-wide uppercase text-slate-900">
+            Entrega da Ordem do Mérito Aeronáutico 2026
+          </div>
+        </div>
+
+        <!-- Document Body (List of Names) -->
+        <div id="nominata-content-list" class="space-y-3.5 text-xs sm:text-sm leading-relaxed text-slate-900">
+          <!-- Rendered dynamically -->
+        </div>
+
+        <!-- Document Footer / Legend -->
+        <div id="nominata-footer-legend" class="mt-12 pt-4 border-t border-slate-300 text-xs text-slate-600 flex justify-between items-center">
+          <span id="legend-text">Legenda: &lt;- Presença confirmada</span>
+          <span class="text-[11px] text-slate-400">Gerado via Sistema Integrado de Cerimonial - BAGL</span>
+        </div>
+
+      </div>
+
+    </section>
+
+  </main>
+
+  <!-- MODAL: CADASTRAR OU EDITAR AUTORIDADE -->
+  <div id="modal-add-manual" class="fixed inset-0 bg-[#07152B]/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden overflow-y-auto">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-xl w-full overflow-hidden border border-slate-200 transform transition-all my-8">
+      
+      <div class="bg-[#0B1D3A] text-white px-6 py-4 flex items-center justify-between border-b border-[#162E54]">
+        <div class="flex items-center gap-2">
+          <div class="w-8 h-8 rounded-lg bg-amber-500/20 text-amber-400 flex items-center justify-center">
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M18 9v3m0 0v3m0-3h3m-3 0h-3m-2-5a4 4 0 11-8 0 4 4 0 018 0zM3 20a6 6 0 0112 0v1H3v-1z"/>
+            </svg>
+          </div>
+          <div>
+            <h3 id="modal-authority-title" class="font-bold text-sm sm:text-base">Adicionar Autoridade Avulsa</h3>
+            <p id="modal-authority-subtitle" class="text-xs text-slate-400">Convidado não constante no carômetro inicial</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-modal-add" class="text-slate-400 hover:text-white transition">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <form id="form-add-manual" class="p-6 space-y-4 max-h-[82vh] overflow-y-auto">
+        <input type="hidden" id="input-edit-authority-id" value="">
+
+        <!-- Fotografia -->
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 flex items-center gap-4">
+          <div id="photo-preview-box" class="w-16 h-20 rounded-lg border border-slate-300 overflow-hidden bg-slate-200 flex-shrink-0 flex items-center justify-center text-slate-400 font-bold text-sm uppercase shadow-inner">
+            <span id="photo-preview-initials">FT</span>
+            <img id="photo-preview-img" src="" alt="Prévia da Foto" class="w-full h-full object-cover object-top hidden">
+          </div>
+          <div class="flex-1 min-w-0">
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              Fotografia de Identificação (Opcional)
+            </label>
+            <div class="flex flex-wrap items-center gap-2">
+              <button type="button" id="btn-select-photo" class="px-3 py-1.5 rounded-lg bg-[#0B1D3A] hover:bg-[#162E54] text-white text-xs font-medium transition shadow-sm">
+                Selecionar / Alterar Foto
+              </button>
+              <button type="button" id="btn-remove-photo" class="px-3 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-medium transition hidden">
+                Remover Foto
+              </button>
+              <input type="file" id="input-authority-photo" accept="image/*" class="hidden">
+            </div>
+            <p class="text-[11px] text-slate-500 mt-1">Redimensionada automaticamente e salva no banco local (IndexedDB).</p>
+          </div>
+        </div>
+        
+        <!-- Nome Completo -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+            Nome Completo da Autoridade *
+          </label>
+          <input 
+            type="text" 
+            id="input-add-name" 
+            required 
+            placeholder="Informe o nome completo da autoridade" 
+            class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+          >
+        </div>
+
+        <!-- Forma de Tratamento e Nome de Guerra -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              Forma de Tratamento *
+            </label>
+            <select id="select-add-treatment" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+              <option value="SENHOR">SENHOR</option>
+              <option value="SENHORA">SENHORA</option>
+              <option value="EXMO. SR.">EXMO. SR.</option>
+              <option value="EXMA. SRA.">EXMA. SRA.</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              Nome de Guerra / Abreviado
+            </label>
+            <input 
+              type="text" 
+              id="input-add-warname" 
+              placeholder="Nome de guerra ou abreviado" 
+              class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+            >
+          </div>
+        </div>
+
+        <!-- Posto / Graduação (Catálogo + Edição Livre) -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              Posto / Graduação (Seleção Rápida)
+            </label>
+            <select id="select-add-rank" class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+              <option value="Senhor">Senhor (Civil)</option>
+              <option value="Senhora">Senhora (Civil)</option>
+              <option value="General de Exército">General de Exército</option>
+              <option value="General de Divisão">General de Divisão</option>
+              <option value="General de Brigada">General de Brigada</option>
+              <option value="Tenente-Brigadeiro do Ar">Tenente-Brigadeiro do Ar</option>
+              <option value="Almirante de Esquadra">Almirante de Esquadra</option>
+              <option value="Vice-Almirante">Vice-Almirante</option>
+              <option value="Major-Brigadeiro do Ar">Major-Brigadeiro do Ar</option>
+              <option value="Major-Brigadeiro Médico">Major-Brigadeiro Médico</option>
+              <option value="Major-Brigadeiro Médica">Major-Brigadeiro Médica</option>
+              <option value="Major-Brigadeiro Engenheiro">Major-Brigadeiro Engenheiro</option>
+              <option value="Major-Brigadeiro Intendente">Major-Brigadeiro Intendente</option>
+              <option value="Contra-Almirante">Contra-Almirante</option>
+              <option value="Brigadeiro do Ar">Brigadeiro do Ar</option>
+              <option value="Brigadeiro Intendente">Brigadeiro Intendente</option>
+              <option value="Brigadeiro Médico">Brigadeiro Médico</option>
+              <option value="Brigadeiro Médica">Brigadeiro Médica</option>
+              <option value="Brigadeiro Engenheiro">Brigadeiro Engenheiro</option>
+              <option value="Brigadeiro de Infantaria">Brigadeiro de Infantaria</option>
+              <option value="Coronel Aviador">Coronel Aviador</option>
+              <option value="Coronel Intendente">Coronel Intendente</option>
+              <option value="Coronel Médico">Coronel Médico</option>
+              <option value="Coronel Médica">Coronel Médica</option>
+              <option value="Capitão de Mar e Guerra">Capitão de Mar e Guerra</option>
+              <option value="Tenente-Coronel Aviador">Tenente-Coronel Aviador</option>
+              <option value="Major Aviador">Major Aviador</option>
+              <option value="Capitão">Capitão</option>
+              <option value="Suboficial">Suboficial</option>
+              <option value="Deputado Federal">Deputado Federal</option>
+              <option value="Deputado Estadual">Deputado Estadual</option>
+              <option value="Secretário de Estado">Secretário de Estado</option>
+              <option value="Outro">Personalizado / Outro...</option>
+            </select>
+          </div>
+
+          <div>
+            <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+              Posto na Nominata / Sigla
+            </label>
+            <div class="grid grid-cols-3 gap-1.5">
+              <input 
+                type="text" 
+                id="input-add-rank-abbr" 
+                placeholder="Sigla (ex: Maj Brig)" 
+                title="Posto abreviado exibido no cartão do carômetro"
+                class="col-span-1 w-full px-2 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
+              >
+              <input 
+                type="text" 
+                id="input-add-full-rank" 
+                placeholder="Posto por extenso na Nominata" 
+                title="Posto por extenso utilizado no texto da Nominata"
+                class="col-span-2 w-full px-2.5 py-2 border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
+              >
+            </div>
+          </div>
+        </div>
+
+        <!-- Cargo / Função -->
+        <div>
+          <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider mb-1">
+            Cargo / Função Oficial (opcional)
+          </label>
+          <input 
+            type="text" 
+            id="input-add-cargo" 
+            placeholder="Ex: Secretário Municipal de Segurança Pública" 
+            class="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500"
+          >
+          <p class="text-[11px] text-slate-500 mt-1">Se preenchido, sairá como: [TRATAMENTO] [CARGO], [POSTO] [NOME].</p>
+        </div>
+
+        <!-- Posição na Ordem de Precedência -->
+        <div class="bg-slate-50 p-3 rounded-xl border border-slate-200 space-y-2.5">
+          <label class="block text-xs font-semibold text-slate-700 uppercase tracking-wider">
+            Posição na Ordem de Precedência da Nominata
+          </label>
+          <select id="select-add-position" class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-amber-500">
+            <option value="keep" id="option-position-keep" class="hidden">Manter posição atual na ordem de precedência</option>
+            <option value="start">No início da relação (1ª posição)</option>
+            <option value="end" selected>No final da relação (Padrão para novos)</option>
+            <option value="before_id">Antes de uma autoridade específica...</option>
+            <option value="after_id">Depois de uma autoridade específica...</option>
+          </select>
+
+          <div id="wrapper-insert-after" class="hidden space-y-2 pt-1">
+            <div class="relative">
+              <input 
+                type="text" 
+                id="input-search-reference-authority" 
+                placeholder="Pesquisar autoridade de referência por nome, guerra, posto ou #ordem..." 
+                class="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-amber-500"
+              >
+            </div>
+            <select id="select-reference-authority" size="4" class="w-full px-2 py-1.5 bg-white border border-slate-300 rounded-lg text-xs focus:outline-none focus:ring-2 focus:ring-amber-500 max-h-32 overflow-y-auto">
+              <!-- Populated dynamically -->
+            </select>
+            <!-- Campo numérico mantido sincronizado para compatibilidade direta por #ordem -->
+            <div class="flex items-center gap-2 text-[11px] text-slate-600">
+              <span>Ou informe o nº de ordem (#):</span>
+              <input 
+                type="number" 
+                id="input-insert-after-id" 
+                min="1" 
+                placeholder="Ex: 1, 14" 
+                class="w-24 px-2 py-1 bg-white border border-slate-300 rounded text-xs"
+              >
+            </div>
+          </div>
+        </div>
+
+        <div class="pt-3 flex items-center justify-between gap-2 border-t border-slate-200">
+          <button 
+            type="button" 
+            id="btn-delete-from-edit" 
+            class="hidden px-3 py-2 rounded-lg text-rose-600 hover:bg-rose-50 border border-rose-200 text-xs sm:text-sm font-medium transition flex items-center gap-1"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+            </svg>
+            <span>Excluir Autoridade</span>
+          </button>
+
+          <div class="flex items-center gap-2 ml-auto">
+            <button 
+              type="button" 
+              id="btn-cancel-modal-add" 
+              class="px-4 py-2 rounded-lg text-slate-600 hover:bg-slate-100 text-sm font-medium transition"
+            >
+              Cancelar
+            </button>
+            <button 
+              type="submit" 
+              id="btn-submit-authority-form"
+              class="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-500 text-white text-sm font-semibold shadow-md transition"
+            >
+              Cadastrar & Marcar Presença
+            </button>
+          </div>
+        </div>
+
+      </form>
+
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIRMAR EXCLUSÃO DE AUTORIDADE -->
+  <div id="modal-confirm-delete" class="fixed inset-0 bg-[#07152B]/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-center border border-slate-200">
+      <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
+        </svg>
+      </div>
+      <h3 class="text-base font-bold text-slate-900 mb-1">Excluir Autoridade?</h3>
+      <p id="delete-authority-summary" class="text-xs text-slate-600 mb-3 leading-relaxed">
+        Tem certeza de que deseja remover esta autoridade do carômetro e da nominata?
+      </p>
+      <p class="text-[11px] text-amber-800 bg-amber-50 border border-amber-200 rounded-lg p-2 mb-5">
+        Dica: Você pode exportar um <strong>Backup JSON</strong> na barra superior caso deseje recuperar registros excluídos posteriormente.
+      </p>
+      <div class="flex items-center justify-center gap-2">
+        <button type="button" id="btn-cancel-delete" class="px-4 py-2 rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 text-xs sm:text-sm font-medium transition">
+          Cancelar
+        </button>
+        <button type="button" id="btn-confirm-delete" class="px-4 py-2 rounded-lg text-white bg-rose-600 hover:bg-rose-500 text-xs sm:text-sm font-semibold shadow transition">
+          Sim, Excluir Autoridade
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIRMAR ZERAR PRESENÇAS -->
+  <div id="modal-confirm-reset" class="fixed inset-0 bg-[#07152B]/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-sm w-full p-6 text-center border border-slate-200">
+      <div class="w-12 h-12 rounded-full bg-rose-100 text-rose-600 flex items-center justify-center mx-auto mb-3">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+      </div>
+      <h3 class="text-base font-bold text-slate-900 mb-1">Zerar Todas as Presenças?</h3>
+      <p class="text-xs text-slate-600 mb-5">
+        Esta ação desmarcará todas as autoridades como presentes para reiniciar a recepção.
+      </p>
+      <div class="flex items-center justify-center gap-2">
+        <button id="btn-cancel-reset" class="px-4 py-2 rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 text-xs sm:text-sm font-medium transition">
+          Cancelar
+        </button>
+        <button id="btn-confirm-reset" class="px-4 py-2 rounded-lg text-white bg-rose-600 hover:bg-rose-500 text-xs sm:text-sm font-semibold shadow transition">
+          Sim, Zerar Chamada
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIRMAR RESTAURAÇÃO DE BACKUP JSON -->
+  <div id="modal-confirm-restore" class="fixed inset-0 bg-[#07152B]/70 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-center border border-slate-200">
+      <div class="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-3">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12"/>
+        </svg>
+      </div>
+      <h3 class="text-base font-bold text-slate-900 mb-1">Restaurar Backup JSON?</h3>
+      <p id="restore-backup-summary" class="text-xs text-slate-600 mb-5 leading-relaxed">
+        Deseja substituir os dados atuais pelos dados do arquivo de backup selecionado?
+      </p>
+      <div class="flex items-center justify-center gap-2">
+        <button id="btn-cancel-restore" class="px-4 py-2 rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 text-xs sm:text-sm font-medium transition">
+          Cancelar
+        </button>
+        <button id="btn-confirm-restore" class="px-4 py-2 rounded-lg text-white bg-amber-600 hover:bg-amber-500 text-xs sm:text-sm font-semibold shadow transition">
+          Sim, Restaurar Dados
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: PROCESSANDO IMPORTAÇÃO PDF -->
+  <div id="modal-pdf-loading" class="fixed inset-0 bg-[#07152B]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-md w-full p-6 text-center border border-slate-200">
+      <div class="w-12 h-12 rounded-full bg-blue-100 text-blue-700 flex items-center justify-center mx-auto mb-3 animate-pulse">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 21h10a2 2 0 002-2V9.414a1 1 0 00-.293-.707l-5.414-5.414A1 1 0 0012.586 3H7a2 2 0 00-2 2v14a2 2 0 002 2z"/>
+        </svg>
+      </div>
+      <h3 class="text-base font-bold text-slate-900 mb-1">Processando Carômetro PDF Localmente...</h3>
+      <p id="pdf-loading-message" class="text-xs text-slate-600 mb-3">
+        Extraindo textos, fotografias e coordenadas de página...
+      </p>
+      <div class="w-full bg-slate-100 h-2 rounded-full overflow-hidden">
+        <div id="pdf-loading-bar" class="bg-blue-600 h-full w-1/3 transition-all duration-300"></div>
+      </div>
+      <p class="text-[11px] text-slate-400 mt-3">
+        Nenhum dado atual será alterado até sua revisão e confirmação final.
+      </p>
+    </div>
+  </div>
+
+  <!-- MODAL: TELA DE CONFERÊNCIA E REVISÃO OBRIGATÓRIA DO CARÔMETRO PDF -->
+  <div id="modal-pdf-review" class="fixed inset-0 bg-[#07152B]/80 backdrop-blur-sm z-50 flex items-center justify-center p-2 sm:p-4 hidden overflow-y-auto">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-6xl w-full overflow-hidden border border-slate-300 flex flex-col max-h-[94vh]">
+      
+      <!-- Header da Conferência -->
+      <div class="bg-[#0B1D3A] text-white px-4 sm:px-6 py-3.5 flex flex-wrap items-center justify-between gap-3 border-b border-[#162E54]">
+        <div class="flex items-center gap-2.5">
+          <div class="w-9 h-9 rounded-lg bg-blue-500/20 text-amber-400 flex items-center justify-center border border-blue-400/30">
+            <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2m-6 9l2 2 4-4"/>
+            </svg>
+          </div>
+          <div>
+            <h3 class="font-bold text-sm sm:text-base">Conferência Obrigatória — Importação de Carômetro PDF</h3>
+            <p class="text-xs text-blue-200">Verifique os dados extraídos, fotos e ordem de precedência antes de substituir o carômetro atual.</p>
+          </div>
+        </div>
+        <button type="button" id="btn-close-pdf-review" class="text-slate-400 hover:text-white transition" title="Cancelar e fechar revisão">
+          <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+          </svg>
+        </button>
+      </div>
+
+      <!-- Painel de Metadados do Evento e Estatísticas da Extração -->
+      <div class="bg-slate-50 px-4 sm:px-6 py-3 border-b border-slate-200 flex flex-col lg:flex-row items-stretch lg:items-center justify-between gap-3">
+        
+        <!-- Nome do Evento (Editável) + Info do Arquivo -->
+        <div class="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 flex-1">
+          <div class="flex-1 max-w-md">
+            <label for="input-review-event-name" class="block text-[10px] font-bold uppercase tracking-wider text-slate-600 mb-0.5">
+              Nome do Evento (Cabeçalho: BAGL • <span id="preview-review-event-badge" class="text-amber-700">EVENTO</span>) *
+            </label>
+            <input
+              type="text"
+              id="input-review-event-name"
+              placeholder="Ex: OMA 2026, ANIVERSÁRIO DA BASE..."
+              class="w-full px-3 py-1.5 bg-white border border-slate-300 rounded-lg text-xs sm:text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+            >
+          </div>
+
+          <div class="text-xs text-slate-600 bg-white px-3 py-1.5 rounded-lg border border-slate-200 flex flex-col justify-center">
+            <div><span class="font-semibold text-slate-800">Arquivo:</span> <span id="review-pdf-filename">Carômetro.pdf</span></div>
+            <div><span class="font-semibold text-slate-800">Páginas processadas:</span> <span id="review-pdf-pages">1</span></div>
+          </div>
+        </div>
+
+        <!-- Contadores de Diagnóstico da Extração -->
+        <div class="flex items-center gap-2 sm:gap-3 bg-white px-3 py-1.5 rounded-lg border border-slate-200 text-xs self-start lg:self-auto">
+          <div class="text-center px-1.5">
+            <div class="text-[10px] uppercase text-slate-500 font-semibold">Identificados</div>
+            <div id="review-stat-total" class="font-bold text-slate-900 text-sm">0</div>
+          </div>
+          <div class="w-px h-6 bg-slate-200"></div>
+          <div class="text-center px-1.5">
+            <div class="text-[10px] uppercase text-emerald-700 font-semibold">Completos</div>
+            <div id="review-stat-complete" class="font-bold text-emerald-600 text-sm">0</div>
+          </div>
+          <div class="w-px h-6 bg-slate-200"></div>
+          <div class="text-center px-1.5">
+            <div class="text-[10px] uppercase text-amber-700 font-semibold">Com Pendência</div>
+            <div id="review-stat-pending" class="font-bold text-amber-600 text-sm">0</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Alerta de Layout / PDF Digitalizado / Pendências -->
+      <div id="review-warning-banner" class="hidden bg-amber-50 border-b border-amber-200 px-4 sm:px-6 py-2 text-xs text-amber-900 flex items-center justify-between gap-2">
+        <div class="flex items-center gap-2">
+          <svg class="w-4 h-4 text-amber-600 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+          </svg>
+          <span id="review-warning-text">Atenção: Verifique os registros sinalizados com pendência ou associação de foto duvidosa.</span>
+        </div>
+      </div>
+
+      <!-- Barra de Ferramentas da Revisão (Filtros + Adicionar Registro) -->
+      <div class="bg-white px-4 sm:px-6 py-2.5 border-b border-slate-200 flex flex-wrap items-center justify-between gap-2 text-xs">
+        <div class="flex items-center gap-1.5">
+          <button type="button" data-review-filter="all" class="review-filter-btn px-2.5 py-1 rounded-md font-semibold bg-[#0B1D3A] text-white transition">
+            Todos os Registros
+          </button>
+          <button type="button" data-review-filter="pending" class="review-filter-btn px-2.5 py-1 rounded-md font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+            Apenas com Pendências / Revisão
+          </button>
+          <button type="button" data-review-filter="complete" class="review-filter-btn px-2.5 py-1 rounded-md font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 transition">
+            Apenas Completos
+          </button>
+        </div>
+
+        <div class="flex items-center gap-2">
+          <button type="button" id="btn-review-add-item" class="inline-flex items-center gap-1 bg-amber-600 hover:bg-amber-500 text-white font-semibold px-3 py-1.5 rounded-lg shadow-sm transition">
+            <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 4v16m8-8H4"/>
+            </svg>
+            <span>+ Incluir Autoridade Não Identificada</span>
+          </button>
+          <input type="file" id="input-review-row-photo" accept="image/*" class="hidden">
+        </div>
+      </div>
+
+      <!-- Lista Interativa de Autoridades Extraídas -->
+      <div id="review-items-container" class="flex-1 overflow-y-auto p-4 sm:p-6 space-y-3 bg-slate-100">
+        <!-- Renderizado dinamicamente -->
+      </div>
+
+      <!-- Rodapé da Conferência -->
+      <div class="bg-white px-4 sm:px-6 py-3.5 border-t border-slate-200 flex flex-wrap items-center justify-between gap-3">
+        <div class="text-xs text-slate-500">
+          O carômetro atual permanece intacto até a confirmação final na próxima janela.
+        </div>
+        <div class="flex items-center gap-2 ml-auto">
+          <button
+            type="button"
+            id="btn-cancel-pdf-review"
+            class="px-4 py-2 rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 text-xs sm:text-sm font-medium transition"
+          >
+            Cancelar Importação
+          </button>
+          <button
+            type="button"
+            id="btn-proceed-replace-carometro"
+            class="px-4 py-2 rounded-lg text-white bg-emerald-600 hover:bg-emerald-500 text-xs sm:text-sm font-semibold shadow-md transition flex items-center gap-1.5"
+          >
+            <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+            </svg>
+            <span>Confirmar novo carômetro</span>
+          </button>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- MODAL: CONFIRMAÇÃO FINAL DE SUBSTITUIÇÃO DO CARÔMETRO (COM BACKUP AUTOMÁTICO PRÉVIO) -->
+  <div id="modal-confirm-replace-carometro" class="fixed inset-0 bg-[#07152B]/80 backdrop-blur-sm z-50 flex items-center justify-center p-4 hidden">
+    <div class="bg-white rounded-2xl shadow-2xl max-w-lg w-full p-6 border border-slate-200">
+      <div class="w-12 h-12 rounded-full bg-amber-100 text-amber-600 flex items-center justify-center mx-auto mb-3">
+        <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+          <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+        </svg>
+      </div>
+      <h3 class="text-base font-bold text-slate-900 text-center mb-1">Substituir Carômetro pelo Novo Evento?</h3>
+      <p id="replace-carometro-summary" class="text-xs text-slate-600 text-center mb-4 leading-relaxed">
+        O carômetro atual será substituído pelos novos registros revisados e a lista de presenças iniciará zerada.
+      </p>
+
+      <!-- Status do Backup Automático Obrigatório do Evento Atual -->
+      <div class="bg-emerald-50 border border-emerald-200 rounded-xl p-3 mb-4 text-xs text-emerald-950 space-y-2">
+        <div class="flex items-start gap-2">
+          <svg class="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m5.618-4.016A11.955 11.955 0 0112 2.944a11.955 11.955 0 01-8.618 3.04A12.02 12.02 0 003 9c0 5.591 3.824 10.29 9 11.622 5.176-1.332 9-6.03 9-11.622 0-1.042-.133-2.052-.382-3.016z"/>
+          </svg>
+          <div class="flex-1">
+            <div class="font-bold">Proteção de Segurança do Evento Anterior</div>
+            <div id="replace-backup-status-text" class="text-[11px] text-emerald-800 mt-0.5">
+              Um backup JSON recuperável do evento atual foi gerado automaticamente.
+            </div>
+          </div>
+        </div>
+        <div class="flex items-center justify-between pt-1 border-t border-emerald-200/70">
+          <button
+            type="button"
+            id="btn-download-pre-replace-backup"
+            class="text-[11px] font-semibold text-emerald-800 hover:text-emerald-950 underline flex items-center gap-1"
+          >
+            <span>Baixar novamente o Backup do evento atual (.json)</span>
+          </button>
+          <span id="badge-backup-verified" class="text-[10px] font-bold uppercase px-2 py-0.5 rounded bg-emerald-200 text-emerald-900">
+            Backup Disponível
+          </span>
+        </div>
+      </div>
+
+      <div class="flex items-center justify-end gap-2">
+        <button
+          type="button"
+          id="btn-cancel-final-replace"
+          class="px-4 py-2 rounded-lg text-slate-700 bg-slate-100 hover:bg-slate-200 text-xs sm:text-sm font-medium transition"
+        >
+          Voltar à Revisão
+        </button>
+        <button
+          type="button"
+          id="btn-execute-final-replace"
+          class="px-4 py-2 rounded-lg text-white bg-rose-600 hover:bg-rose-500 text-xs sm:text-sm font-semibold shadow-md transition"
+        >
+          Sim, Substituir Carômetro Agora
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div id="toast" class="fixed bottom-6 right-6 z-50 bg-[#0B1D3A] text-white text-xs sm:text-sm px-4 py-3 rounded-xl shadow-2xl border border-[#1C4179] flex items-center gap-2 transform translate-y-20 opacity-0 transition-all duration-300 pointer-events-none">
+    <svg id="toast-icon" class="w-5 h-5 text-emerald-400 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 13l4 4L19 7"/>
+    </svg>
+    <span id="toast-message">Operação realizada com sucesso</span>
+  </div>
+
+  <!-- SCRIPTS MODULARES -->
+  <script src="data/initial-data.js"></script>
+  <script src="js/utils/toast.js"></script>
+  <script src="js/utils/photo-utils.js"></script>
+  <script src="js/utils/rank-parser.js"></script>
+  <script src="js/core/db.js"></script>
+  <script src="js/modules/nominata.js"></script>
+  <script src="js/modules/pdf-importer.js"></script>
+  <script src="js/modules/pwa.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
