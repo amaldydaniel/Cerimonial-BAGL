@@ -152,7 +152,10 @@
   window.togglePresence = async function (id) {
     const item = state.authorities.find((a) => a.id === id);
     if (!item) return;
-
+    if (window.CerimonialSync && window.CerimonialSync.isConnected()) {
+      await window.CerimonialSync.presence(item);
+      return;
+    }
     item.present = !item.present;
     if (item.present) {
       item.checkedTime = new Date().toLocaleTimeString('pt-BR', {
