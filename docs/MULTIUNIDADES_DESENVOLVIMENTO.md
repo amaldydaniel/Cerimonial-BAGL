@@ -1,6 +1,6 @@
 # Cerimonial — evolução multiunidades (etapa de desenvolvimento)
 
-**Estado:** código preparado para homologação; **não publicado** e **não implantado no Supabase**. A versão funcional de teste permanece preservada no GitHub. Não copiar direto para `main` ou para a pasta que está sendo usada operacionalmente.
+**Estado em 24/10/2026:** tabelas e RPC de multiunidades implantadas no Supabase e verificadas. A Edge Function e o frontend multiunidades ainda NÃO foram publicados. Conta Master ainda não criada. A versão funcional de teste permanece preservada no GitHub. Não copiar direto para `main` ou para a pasta que está sendo usada operacionalmente.
 
 ## Regras atendidas nesta proposta
 
@@ -25,11 +25,11 @@
 ## Passos de homologação — executar antes da publicação
 
 1. Criar uma **branch de trabalho independente** para esta implementação. **Não** sobrescrever `main` e não usar `git add .` indiscriminadamente (o projeto local contém outros arquivos sensíveis).
-2. Validar e aplicar a migração SQL no Supabase `zjeljjgfbqalaxqamjhb`. Ela cria **somente** novas tabelas e nova RPC `cerimonial_multi_api`, com `EXECUTE` exclusivo do `service_role`.
+2. **CONCLUÍDO:** migrações Supabase `cerimonial_multiunidades_estrutura_inicial` e `cerimonial_multiunidades_api_isolada`. RLS ativada, acesso `anon`/`authenticated` revogado, RPC executável somente pelo `service_role`. Não reaplicar sem conferir o histórico.
 3. No Supabase Auth, manter cadastro público de usuários desabilitado ou, mesmo se habilitado, garantir que nenhum usuário sem vínculo explícito com `cerimonial_private.unidades` possa usar a API. O código valida esse vínculo em toda operação.
 4. Configurar serviço **SMTP personalizado** para e-mails de recuperação. O SMTP padrão do Supabase pode recusar entrega a e-mails fora da equipe do projeto. Verificar entrega ao domínio institucional com a ACS antes de ativar.
 5. Em **Auth > URL Configuration**, configurar o endereço oficial `https://amaldydaniel.github.io/Cerimonial-BAGL/` como URL de redirecionamento permitida para reset. Links podem sofrer interferência de filtros institucionais de e-mail; validar clique real.
-6. Criar uma única conta Master no Supabase Auth **com e-mail próprio e senha forte**, marcar e-mail confirmado, e anotar **somente** o UUID do usuário de Auth. Para associá-lo ao papel Master, executar SQL manual (substituir os valores exemplificativos):
+6. **PRÓXIMA ETAPA MANUAL:** Criar uma única conta Master no Supabase Auth **com e-mail próprio e senha forte**, marcar e-mail confirmado, e anotar **somente** o UUID do usuário de Auth. Para associá-lo ao papel Master, executar SQL manual (substituir os valores exemplificativos):
 
 ```sql
 INSERT INTO cerimonial_private.unidades
@@ -56,3 +56,6 @@ O usuário solicitou login/senha iniciais como `BAGL/BAGL` e `BABR/BABR`, sem tr
 - Testes estáticos: `node testes/verificar_estrutura.js`. É obrigatória homologação real de SMTP, autenticação e acesso por unidade antes de publicar.
 
 Referências: https://supabase.com/docs/guides/auth/passwords e https://supabase.com/docs/guides/auth/auth-smtp
+## Pendência identificada
+
+O Security Advisor aponta a antiga RPC `public.cerimonial_sync` como `SECURITY DEFINER` executável por `anon` e `authenticated`. A RPC antiga não foi alterada nesta etapa para preservar o serviço. Revisar e corrigir privilégios antes da publicação final, validando dependências. As tabelas privadas com RLS sem políticas são intencionais porque apenas funções internas privilegiadas as acessam.
