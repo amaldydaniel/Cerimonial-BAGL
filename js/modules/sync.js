@@ -8,6 +8,8 @@
   let connected = false;
   let admin = false;
   let version = -1;
+  let structureVersion = -1;
+  let initialLoadDone = false;
   let busy = false;
   let isOffline = false;
   let app = null;
@@ -64,12 +66,45 @@
   }
   function clearAuth() {
     session = ''; refreshToken = ''; account = null; connected = false;
+    version = -1; structureVersion = -1; initialLoadDone = false;
     sessionStorage.removeItem('cerimonial_multi_session');
     sessionStorage.removeItem('cerimonial_multi_refresh');
   }
 
+  // Normaliza e valida o horário de presença estritamente no padrão HH:MM
+  function formatCheckedTime(val) {
+    if (!val) return null;
+    const str = String(val).trim();
+    if (!str) return null;
+    // 1. Já está no formato HH:MM (ex: "10:14")
+    if (/^\d{2}:\d{2}$/.test(str)) {
+      return str;
+    }
+    // 2. Formato HH:MM:SS (ex: "10:14:32") -> extrai HH:MM
+    const matchHms = str.match(/^(\d{2}:\d{2}):\d{2}$/);
+    if (matchHms) {
+      return matchHms[1];
+    }
+    // 3. Formato ISO ou timestamptz parseável (ex: "2026-10-24T13:14:32Z")
+    const d = new Date(str);
+    if (!isNaN(d.getTime())) {
+      return d.toLocaleTimeString('pt-BR', {
+        hour: '2-digit',
+        minute: '2-digit',
+        timeZone: 'America/Sao_Paulo'
+      });
+    }
+    // 4. Fallback seguro buscando ocorrência de HH:MM
+    const matchAny = str.match(/\b\d{2}:\d{2}\b/);
+    return matchAny ? matchAny[0] : null;
+  }
+
   // Aplica dados do carômetro recebidos do servidor
   async function apply(data) {
+    initialLoadDone = true;
+    if (data && data.structure_version !== undefined && data.structure_version !== null) {
+      structureVersion = String(data.structure_version);
+    }
     if (!data.items || !data.items.length) {
       app.authorities = [];
       app.manualCounter = 0;
@@ -79,12 +114,66 @@
       setClearVisible(false);
       return;
     }
+    // Garante que todo item carregado por read tenha checkedTime no padrão HH:MM
+    data.items.forEach((it) => {
+      if (it) {
+        it.checkedTime = it.present ? formatCheckedTime(it.checkedTime) : null;
+      }
+    });
     app.authorities = window.CerimonialNominata.getSortedAuthorities(data.items);
     app.eventName = data.name || app.eventName;
     app.manualCounter = app.authorities.filter((a) => a.isManual).length;
     redraw();
     updateStatusBadge('online', '● Sincronizado (' + (account ? account.login : '') + ')');
     setClearVisible(true);
+  }
+
+  // Valida e aplica atomicamente as alterações de presença recebidas do servidor
+  function applyPresences(items) {
+    if (!Array.isArray(items) || !app || !Array.isArray(app.authorities)) return false;
+    if (items.length !== app.authorities.length) {
+      return false; // contagem divergente requer leitura estrutural completa
+    }
+
+    // FASE 1: Validação rigorosa de todos os dados e integridade dos IDs (sem mutação prévia)
+    const validatedMap = new Map();
+    for (let i = 0; i < items.length; i++) {
+      const it = items[i];
+      if (!it || typeof it !== 'object') return false;
+      const id = typeof it.id === 'string' ? it.id.trim() : '';
+      if (!id) return false;
+      if (validatedMap.has(id)) return false; // detecção de IDs duplicados no payload
+
+      if (typeof it.present !== 'boolean') return false; // integridade de tipo booleano obrigatória
+      const isPresent = it.present === true;
+
+      let cleanTime = null;
+      if (isPresent) {
+        cleanTime = formatCheckedTime(it.checkedTime);
+      }
+      validatedMap.set(id, { present: isPresent, checkedTime: cleanTime });
+    }
+
+    // Verifica se todas as autoridades locais possuem correspondência estrita nos dados validados
+    for (let i = 0; i < app.authorities.length; i++) {
+      const auth = app.authorities[i];
+      if (!auth || !validatedMap.has(String(auth.id))) {
+        return false; // ID local ausente no delta requer leitura estrutural completa
+      }
+    }
+
+    // FASE 2: Aplicação atômica garantida (apenas após 100% dos dados serem validados)
+    for (let i = 0; i < app.authorities.length; i++) {
+      const a = app.authorities[i];
+      const validated = validatedMap.get(String(a.id));
+      a.present = validated.present;
+      a.checkedTime = validated.checkedTime;
+    }
+
+    redraw();
+    updateStatusBadge('online', app.authorities.length ? '● Sincronizado (' + (account ? account.login : '') + ')' : '● Conectado (Sem carômetro)');
+    setClearVisible(app.authorities.length > 0);
+    return true;
   }
 
   // Atualiza visual do status de sincronização
@@ -104,25 +193,79 @@
 
   // Fila para chamadas de sincronização forçadas
   let pendingForce = false;
-  async function doRefresh(force) {
+  let pendingStructuralForce = false;
+
+  async function doRefresh(force, forceStructural = false) {
     busy = true;
     try {
       const isForced = force || pendingForce;
+      const isStructural = forceStructural || pendingStructuralForce;
       pendingForce = false;
+      pendingStructuralForce = false;
+
       const v = await request('version');
       isOffline = false;
-      if (isForced || v.version !== version) {
+
+      const serverVersion = (v && v.version !== undefined && v.version !== null) ? String(v.version) : '-1';
+      const serverStructure = (v && v.structure_version !== undefined && v.structure_version !== null) ? String(v.structure_version) : null;
+
+      // Cenário 1: Leitura completa obrigatória (com fotos)
+      // - Forçado explicitamente estrutural (novo upload ou exclusão local)
+      // - Carga inicial ainda não realizada (!initialLoadDone)
+      // - Versão estrutural local ainda não inicializada
+      // - Versão estrutural do servidor divergiu (novo PDF publicado)
+      // - Servidor legado que não envia structure_version (fallback retrocompatível)
+      const needsFullRead = isStructural ||
+        !initialLoadDone ||
+        structureVersion === -1 ||
+        structureVersion === '-1' ||
+        (serverStructure !== null && serverStructure !== String(structureVersion)) ||
+        (serverStructure === null && (isForced || serverVersion !== String(version)));
+
+      if (needsFullRead) {
         const data = await request('read');
-        version = data.version;
+        version = String(data.version);
+        structureVersion = (data.structure_version !== undefined && data.structure_version !== null) ? String(data.structure_version) : '1';
         admin = !!data.admin;
         await apply(data);
+      } else if (serverVersion !== String(version)) {
+        // Se não há carômetro carregado, alinha a versão sem tentar delta de presenças
+        if (!app.authorities || app.authorities.length === 0) {
+          version = serverVersion;
+          if (serverStructure !== null) structureVersion = serverStructure;
+        } else {
+          // Cenário 2: Atualização parcial de presenças (estrutura idêntica)
+          try {
+            const delta = await request('presences');
+            const deltaVersion = String(delta.version);
+            const deltaStructure = (delta.structure_version !== undefined && delta.structure_version !== null) ? String(delta.structure_version) : String(structureVersion);
+
+            if (deltaStructure !== String(structureVersion) || !applyPresences(delta.items)) {
+              const data = await request('read');
+              version = String(data.version);
+              structureVersion = (data.structure_version !== undefined && data.structure_version !== null) ? String(data.structure_version) : '1';
+              admin = !!data.admin;
+              await apply(data);
+            } else {
+              version = deltaVersion;
+              structureVersion = deltaStructure;
+            }
+          } catch (deltaErr) {
+            console.warn('[CerimonialSync] Falha na sincronização parcial, recorrendo à leitura completa:', deltaErr);
+            const data = await request('read');
+            version = String(data.version);
+            structureVersion = (data.structure_version !== undefined && data.structure_version !== null) ? String(data.structure_version) : '1';
+            admin = !!data.admin;
+            await apply(data);
+          }
+        }
       } else {
         updateStatusBadge('online', app.authorities.length ? '● Sincronizado (' + (account ? account.login : '') + ')' : '● Conectado (Sem carômetro)');
         setClearVisible(app.authorities.length > 0);
       }
     } catch (e) {
       if (e.status === 401) {
-        connected = false; session = ''; admin = false; version = -1;
+        connected = false; session = ''; admin = false; version = -1; structureVersion = -1;
         clearAuth(); stopPolling();
         showLoginModal(true); updateUserHeaderBadge(false);
         updateStatusBadge('disconnected', '○ Sessão expirada — faça login');
@@ -133,20 +276,20 @@
       console.warn('[CerimonialSync] Sem conexão com o servidor:', e.message);
     } finally {
       busy = false;
-      if (pendingForce) {
-        pendingForce = false;
-        await doRefresh(true);
+      if (pendingForce || pendingStructuralForce) {
+        await doRefresh(pendingForce, pendingStructuralForce);
       }
     }
   }
 
-  async function refresh(force = false) {
+  async function refresh(force = false, forceStructural = false) {
     if (!connected) return;
     if (busy) {
       if (force) pendingForce = true;
+      if (forceStructural) pendingStructuralForce = true;
       return;
     }
-    return doRefresh(force);
+    return doRefresh(force, forceStructural);
   }
 
   // Conecta e inicializa o carômetro a partir da sessão
@@ -167,7 +310,9 @@
       connected = true;
       isOffline = false;
       admin = !!data.admin;
-      version = data.version;
+      version = String(data.version);
+      structureVersion = (data.structure_version !== undefined && data.structure_version !== null) ? String(data.structure_version) : '1';
+      initialLoadDone = true;
 
       // O servidor é a única fonte de dados: nunca publica dados locais automaticamente.
       await apply(data);
@@ -207,6 +352,8 @@
       connected = false;
       admin = false;
       version = -1;
+      structureVersion = -1;
+      initialLoadDone = false;
       stopPolling();
       if (app) { app.authorities = []; app.eventName = 'EVENTO CERIMONIAL'; redraw(); }
       updateUserHeaderBadge(false);
@@ -227,7 +374,7 @@
     pendingPresenceRequests.add(itemId);
     try {
       await request('toggle', { id: item.id, present: !item.present });
-      await refresh(true);
+      await refresh(true, false);
       return true;
     } catch (e) {
       updateStatusBadge('offline', '⚠ Falha ao salvar no servidor');
@@ -257,7 +404,9 @@
     });
     const result = await request('upload', {items: normalized, name});
     version = -1;
-    await refresh(true);
+    structureVersion = -1;
+    initialLoadDone = false;
+    await refresh(true, true);
     if (!connected || isOffline) throw new Error('Carômetro salvo, mas não foi possível confirmar a atualização.');
     toast(`Carômetro publicado para todos (${result.count} autoridades).`, 'success');
     return result;
@@ -272,7 +421,9 @@
     try {
       const result = await request('clear');
       version = -1;
-      await refresh(true);
+      structureVersion = -1;
+      initialLoadDone = false;
+      await refresh(true, true);
       toast('Carômetro excluído para todos os operadores.', 'success');
       setClearVisible(false);
       return !!result;
@@ -339,7 +490,7 @@
     bar.onclick = () => {
       if (connected) {
         toast('Verificando atualizações no servidor...');
-        refresh(true);
+        refresh(true, false);
       }
     };
 

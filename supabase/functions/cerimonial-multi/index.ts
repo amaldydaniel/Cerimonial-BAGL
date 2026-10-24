@@ -282,7 +282,7 @@ Deno.serve(async (req: Request) => {
       }
       return reply({ok:true},200,origin);
     }
-    if(['read','version','toggle','upload','clear'].includes(action)) {
+    if(['read','version','presences','toggle','upload','clear'].includes(action)) {
       if(mine.role!=='unit')return reply({error:'Painel exclusivo da unidade'},403,origin);
       if(action==='upload'&&(!Array.isArray(body.items)||body.items.length>2000||
           JSON.stringify(body.items).length>14000000))
