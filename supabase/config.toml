@@ -1,0 +1,5 @@
+# Configuração de Edge Functions do Supabase
+# Garante verify_jwt = false para cerimonial-multi em futuros deployments via Supabase CLI
+
+[functions.cerimonial-multi]
+verify_jwt = false

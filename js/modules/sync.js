@@ -217,9 +217,14 @@
     }
   }
 
+  const pendingPresenceRequests = new Set();
+
   // Marca presença somente quando o servidor confirma a gravação.
   async function presence(item) {
     if (!connected || isOffline) { toast('Sem conexão. Aguarde para registrar a presença.', 'warning'); return false; }
+    const itemId = String(item.id);
+    if (pendingPresenceRequests.has(itemId)) return false;
+    pendingPresenceRequests.add(itemId);
     try {
       await request('toggle', { id: item.id, present: !item.present });
       await refresh(true);
@@ -228,6 +233,8 @@
       updateStatusBadge('offline', '⚠ Falha ao salvar no servidor');
       toast('Presença não registrada. Tente novamente.', 'error');
       return false;
+    } finally {
+      pendingPresenceRequests.delete(itemId);
     }
   }
 
@@ -300,11 +307,15 @@
       if (show) {
         badge.classList.remove('hidden');
         const masterButton = document.getElementById('cerimonial-master-open');
-        if (masterButton) masterButton.style.display = account?.role === 'master' ? '' : 'none';
+        if (masterButton) masterButton.style.display = account?.role === 'master' ? 'inline-flex' : 'none';
         const el = document.getElementById('sync-logged-user');
         if (el && account) el.textContent = account.login;
       }
-      else badge.classList.add('hidden');
+      else {
+        badge.classList.add('hidden');
+        const masterButton = document.getElementById('cerimonial-master-open');
+        if (masterButton) masterButton.style.display = 'none';
+      }
       setClearVisible(show && !!(app && app.authorities && app.authorities.length));
     }
   }
@@ -394,6 +405,16 @@
     }
     const btnClear = document.getElementById('btn-clear-shared-carometro');
     if (btnClear) btnClear.onclick = clearCarometro;
+
+    // Botão discreto para reabrir o Painel Master
+    const btnMasterOpen = document.getElementById('cerimonial-master-open');
+    if (btnMasterOpen) {
+      btnMasterOpen.onclick = () => {
+        if (account?.role === 'master') {
+          window.CerimonialAccounts?.showMaster();
+        }
+      };
+    }
 
     // Funcionalidades de contas e recuperação vinculadas à mesma sessão.
     window.CerimonialAccounts?.init();

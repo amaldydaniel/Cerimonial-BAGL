@@ -160,17 +160,77 @@
     }
   }
 
+  const pendingCardIds = new Set();
+
   /**
-   * Alterna a confirmação de presença da autoridade
+   * Alterna a confirmação de presença da autoridade com proteção contra cliques repetidos
    */
   window.togglePresence = async function (id) {
-    const item = state.authorities.find((a) => String(a.id) === String(id));
+    const authId = String(id);
+    if (pendingCardIds.has(authId)) return;
+
+    const item = state.authorities.find((a) => String(a.id) === authId);
     if (!item) return;
     if (!window.CerimonialSync || !window.CerimonialSync.isConnected()) {
       window.showToast('Faça login para registrar presenças.', 'warning');
       return;
     }
-    await window.CerimonialSync.presence(item);
+
+    pendingCardIds.add(authId);
+
+    // Indicação discreta de operação em andamento e bloqueio contra cliques adicionais
+    const cardEl = document.querySelector(`[data-authority-id="${authId}"]`);
+    const originalPointerEvents = cardEl ? cardEl.style.pointerEvents : '';
+    const addedClasses = [];
+    let originalStatusHtml = null;
+    let statusTextEl = null;
+
+    if (cardEl) {
+      cardEl.style.pointerEvents = 'none';
+
+      // Preserva classes preexistentes (como ring-2 em cartões com presença confirmada)
+      const classesToAdd = ['opacity-75', 'ring-sky-400/60'];
+      if (!cardEl.classList.contains('ring-2')) {
+        classesToAdd.push('ring-2');
+      }
+
+      classesToAdd.forEach((cls) => {
+        if (!cardEl.classList.contains(cls)) {
+          cardEl.classList.add(cls);
+          addedClasses.push(cls);
+        }
+      });
+
+      statusTextEl = cardEl.querySelector('[data-card-status-text]') || cardEl.querySelector('.border-t span');
+      if (statusTextEl) {
+        originalStatusHtml = statusTextEl.innerHTML;
+        statusTextEl.innerHTML = `
+          <span class="inline-flex items-center gap-1.5 text-sky-600 font-semibold">
+            <svg class="animate-spin h-3 w-3 text-sky-600 flex-shrink-0" fill="none" viewBox="0 0 24 24">
+              <circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>
+              <path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z"></path>
+            </svg>
+            <span>Salvando presença...</span>
+          </span>
+        `;
+      }
+    }
+
+    try {
+      await window.CerimonialSync.presence(item);
+    } finally {
+      pendingCardIds.delete(authId);
+      // Restaura apenas o que foi temporariamente modificado caso o cartão ainda esteja no DOM
+      // Se refresh(true) reconstruiu os cartões, o novo elemento já possui os estilos confirmados
+      const isCardInDom = cardEl && (cardEl.isConnected ?? document.contains(cardEl));
+      if (isCardInDom) {
+        cardEl.style.pointerEvents = originalPointerEvents;
+        addedClasses.forEach((cls) => cardEl.classList.remove(cls));
+        if (statusTextEl && originalStatusHtml !== null) {
+          statusTextEl.innerHTML = originalStatusHtml;
+        }
+      }
+    }
   };
 
   /**
@@ -562,7 +622,7 @@
 
             <!-- Registro de chegada: o cartão inteiro alterna presença no servidor -->
             <div class="mt-2.5 pt-2 border-t border-black/5 flex items-center justify-between text-[11px] gap-1">
-              <span class="text-slate-500 truncate">${item.checkedTime ? `Chegada: ${item.checkedTime}` : 'Toque para marcar presença'}</span>
+              <span data-card-status-text class="text-slate-500 truncate">${item.checkedTime ? `Chegada: ${item.checkedTime}` : 'Toque para marcar presença'}</span>
             </div>
 
           </div>

@@ -328,7 +328,7 @@ function forgottenLogin() {
     const title=el('div');
     title.append(el('p','CERIMONIAL • ADMINISTRAÇÃO','uppercase tracking-widest text-xs text-blue-300 font-semibold'),el('h1','Painel Master','text-2xl sm:text-3xl font-bold mt-1'),el('p','Gerenciamento exclusivo de unidades e acessos','text-sm text-slate-300 mt-1'));
     const actions=el('div',null,'flex gap-2 flex-wrap');
-    actions.append(button('Alterar minha senha',changePassword,'dark'),button('Sair',()=>window.CerimonialSync.logout(),'dark'));
+    actions.append(button('Alterar minha senha',changePassword,'dark'),button('Fechar painel',()=>hideMaster(),'dark'),button('Sair',()=>window.CerimonialSync.logout(),'dark'));
     nav.append(title,actions);top.appendChild(nav);dashboard.appendChild(top);
     const main=el('main',null,'max-w-7xl mx-auto px-4 sm:px-6 py-8');
     const stats=el('div',null,'grid grid-cols-1 sm:grid-cols-3 gap-4 mb-7');
