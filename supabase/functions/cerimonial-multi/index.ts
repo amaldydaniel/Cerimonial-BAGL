@@ -150,7 +150,13 @@ Deno.serve(async (req: Request) => {
     if(action==='whoami')return reply(mine,200,origin);
     if(action==='admin_list') {
       if(mine.role!=='master')return reply({error:'Acesso restrito'},403,origin);
-      return reply(await rpc('list_units',{p_actor:user.id}),200,origin);
+      const units=await rpc('list_units',{p_actor:user.id});
+      const response=await fetch(ROOT+'/rest/v1/rpc/cerimonial_admin_exclusoes_pendentes',{
+        method:'POST',headers:authHeaders(SERVICE),body:JSON.stringify({p_actor:user.id})
+      });
+      if(!response.ok)throw new Error('Falha ao consultar exclusões pendentes');
+      const pending=await response.json();
+      return reply({...units,pending:Array.isArray(pending)?pending:[]},200,origin);
     }
     if(action==='admin_create') {
       if(mine.role!=='master')return reply({error:'Acesso restrito'},403,origin);
@@ -202,7 +208,7 @@ Deno.serve(async (req: Request) => {
           console.error('cerimonial-multi unit delete RPC',phase,r.status);
           throw Object.assign(new Error(phase==='preparar'
             ?'Não foi possível preparar a exclusão. Nenhuma alteração foi concluída.'
-            :'A conta foi bloqueada, mas a limpeza final falhou. Tente excluir novamente.'),{status:502});
+            :'O cadastro foi removido; falta confirmar o encerramento da conta de acesso.'),{status:502});
         }
         return r.json();
       };
@@ -216,7 +222,7 @@ Deno.serve(async (req: Request) => {
       }).catch(()=>null);
       if(!deleted || (!deleted.ok && deleted.status!==404)){
         console.error('cerimonial-multi user deletion pending',deleted?.status);
-        return reply({error:'A unidade foi bloqueada, mas o Supabase não concluiu a exclusão da conta. Tente excluir novamente.',partial:true},502,origin);
+        return reply({error:'O carômetro foi removido, mas a conta de autenticação ainda exige finalização. Clique em Concluir exclusão.',partial:true},502,origin);
       }
       const final=await deleteRpc('finalizar',uid);
       return reply(final,200,origin);
