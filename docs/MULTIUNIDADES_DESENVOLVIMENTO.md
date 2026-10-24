@@ -1,6 +1,6 @@
 # Cerimonial — evolução multiunidades (etapa de desenvolvimento)
 
-**Estado em 24/10/2026:** tabelas e RPC de multiunidades implantadas no Supabase e verificadas. A Edge Function e o frontend multiunidades ainda NÃO foram publicados. Conta Master ainda não criada. A versão funcional de teste permanece preservada no GitHub. Não copiar direto para `main` ou para a pasta que está sendo usada operacionalmente.
+**Estado em 24/10/2026:** tabelas e RPC de multiunidades implantadas no Supabase e verificadas. A Edge Function e o frontend multiunidades ainda NÃO foram publicados. Conta Master criada e vinculada ao perfil `master`, com login de sistema `MASTER`; autenticação pela interface ainda pendente. A versão funcional de teste permanece preservada no GitHub. Não copiar direto para `main` ou para a pasta que está sendo usada operacionalmente.
 
 ## Regras atendidas nesta proposta
 
@@ -59,3 +59,12 @@ Referências: https://supabase.com/docs/guides/auth/passwords e https://supabase
 ## Pendência identificada
 
 O Security Advisor aponta a antiga RPC `public.cerimonial_sync` como `SECURITY DEFINER` executável por `anon` e `authenticated`. A RPC antiga não foi alterada nesta etapa para preservar o serviço. Revisar e corrigir privilégios antes da publicação final, validando dependências. As tabelas privadas com RLS sem políticas são intencionais porque apenas funções internas privilegiadas as acessam.
+
+## Progresso em 24/10/2026 — conta Master
+
+- Supabase Auth: conta Master existente e e-mail confirmado.
+- Vinculada na tabela privada `cerimonial_private.unidades` com login `MASTER`, papel `master`, ativa e sem `event_id`.
+- API SQL `cerimonial_multi_api('whoami')` retornou o papel correto e `list_units` retornou lista vazia (nenhuma unidade cadastrada ainda).
+- Número de eventos preexistentes preservado (3).
+- A nova Edge Function ainda não está implantada; por isso **não** é possível entrar como Master no site atual.
+- Próximo passo: validar fluxo de autenticação na função isolada e configurar SMTP e redirecionamento para recuperação.
