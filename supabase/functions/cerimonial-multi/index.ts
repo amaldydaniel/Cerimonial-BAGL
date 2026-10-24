@@ -187,6 +187,40 @@ Deno.serve(async (req: Request) => {
       if(!r.ok)throw new Error('Não foi possível atualizar o nome da unidade.');
       return reply(await r.json(),200,origin);
     }
+    if(action==='admin_delete') {
+      if(mine.role!=='master'||!validLogin(body.login))return reply({error:'Acesso restrito'},403,origin);
+      const login=String(body.login).trim().toUpperCase();
+      if(body.confirmLogin!==login)return reply({error:'Confirme o login exato antes da exclusão.'},400,origin);
+      // A operação começa bloqueando imediatamente a unidade. Cada chamada SQL
+      // valida o Master e o tipo de conta; nunca pode apagar outro Master.
+      const deleteRpc=async(phase: 'preparar'|'finalizar',uid?:string)=>{
+        const r=await fetch(ROOT+'/rest/v1/rpc/cerimonial_admin_excluir_unidade',{
+          method:'POST',headers:authHeaders(SERVICE),
+          body:JSON.stringify({p_actor:user.id,p_login:login,p_fase:phase,p_uid:uid??null})
+        });
+        if(!r.ok){
+          console.error('cerimonial-multi unit delete RPC',phase,r.status);
+          throw Object.assign(new Error(phase==='preparar'
+            ?'Não foi possível preparar a exclusão. Nenhuma alteração foi concluída.'
+            :'A conta foi bloqueada, mas a limpeza final falhou. Tente excluir novamente.'),{status:502});
+        }
+        return r.json();
+      };
+      const prepared=await deleteRpc('preparar');
+      const uid=String(prepared?.user_id||'');
+      if(!/^[0-9a-f-]{36}$/i.test(uid))
+        throw Object.assign(new Error('Cadastro bloqueado; ID da conta inválido. Procure o administrador.'),{status:502});
+      // Usar sempre a API oficial do Auth para apagar usuário e sessões.
+      const deleted=await fetch(ROOT+'/auth/v1/admin/users/'+encodeURIComponent(uid),{
+        method:'DELETE',headers:authHeaders(SERVICE)
+      }).catch(()=>null);
+      if(!deleted || (!deleted.ok && deleted.status!==404)){
+        console.error('cerimonial-multi user deletion pending',deleted?.status);
+        return reply({error:'A unidade foi bloqueada, mas o Supabase não concluiu a exclusão da conta. Tente excluir novamente.',partial:true},502,origin);
+      }
+      const final=await deleteRpc('finalizar',uid);
+      return reply(final,200,origin);
+    }
     if(action==='admin_reset_password'||action==='admin_set_email') {
       if(mine.role!=='master'||!validLogin(body.login))return reply({error:'Acesso restrito'},403,origin);
       const target=await rpc('master_target',{p_actor:user.id,p_login:body.login});
