@@ -20,6 +20,20 @@
 
   window.CerimonialState = state;
 
+  // Conteúdo extraído de PDFs nunca pode ser interpretado como HTML ou como uma URL executável.
+  function htmlSafe(value) {
+    return String(value ?? '').replace(/[&<>"']/g, (ch) => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
+  }
+  function imageSafe(value) {
+    const src = String(value ?? '');
+    if (/^data:image\/(?:png|jpeg|webp);base64,[A-Za-z0-9+/=]+$/.test(src)
+       || /^https:\/\/[A-Za-z0-9._~:/?#\[\]@!$&'()*+,;=%-]+$/.test(src)
+       || /^assets\/img\/[A-Za-z0-9._-]+$/.test(src)) return htmlSafe(src);
+    return '';
+  }
+
   // Mapa auxiliar para sugerir siglas a partir do seletor rápido de postos
   const RANK_ABBR_MAP = {
     'Senhor': 'Senhor',
@@ -79,7 +93,7 @@
     const badgeEl = document.getElementById('header-event-badge');
     const cleanEvent = String(state.eventName || 'EVENTO CERIMONIAL').trim();
     if (badgeEl) {
-      badgeEl.textContent = `BAGL • ${cleanEvent}`;
+      badgeEl.textContent = `${(window.CerimonialSync?.account()?.login || 'CERIMONIAL')} • ${cleanEvent}`;
     }
   }
 
@@ -260,7 +274,7 @@
 
     if (summaryEl) {
       const badge = formatOrderBadge(item);
-      summaryEl.innerHTML = `Confirma a exclusão de <strong>${badge} — ${item.rank_abbr || ''} ${item.war_name || ''} (${item.full_name})</strong>?<br>Esta autoridade será removida do carômetro e da nominata.`;
+      summaryEl.innerHTML = `Confirma a exclusão de <strong>${badge} — ${htmlSafe(item.rank_abbr)} ${htmlSafe(item.war_name)} (${htmlSafe(item.full_name)})</strong>?<br>Esta autoridade será removida do carômetro e da nominata.`;
     }
 
     if (modalDelete) {
@@ -431,10 +445,10 @@
       const subEl = document.getElementById('empty-state-submessage');
       const btnReset = document.getElementById('btn-reset-filters');
       if (state.authorities.length === 0) {
-        if (msgEl) msgEl.textContent = 'Nenhum carômetro carregado neste dispositivo.';
+        if (msgEl) msgEl.textContent = 'Nenhum carômetro carregado no sistema.';
         if (subEl) {
           subEl.innerHTML =
-            'Utilize os botões <strong>"Importar Carômetro PDF"</strong>, <strong>"Restaurar Backup"</strong> ou <strong>"+ Adicionar Avulso"</strong> na barra superior para iniciar o evento localmente.';
+            'Utilize <strong>"Importar Carômetro PDF"</strong> para disponibilizar as autoridades aos operadores conectados.';
           subEl.classList.remove('hidden');
         }
         if (btnReset) btnReset.classList.add('hidden');
@@ -449,7 +463,17 @@
     emptyState.classList.add('hidden');
 
     const html = filtered
-      .map((item) => {
+      .map((rawItem) => {
+        const item = {
+          ...rawItem,
+          id: htmlSafe(rawItem.id),
+          rank_abbr: htmlSafe(rawItem.rank_abbr),
+          war_name: htmlSafe(rawItem.war_name),
+          full_name: htmlSafe(rawItem.full_name),
+          cargo: htmlSafe(rawItem.cargo),
+          checkedTime: htmlSafe(rawItem.checkedTime),
+          photo: imageSafe(rawItem.photo)
+        };
         const isPres = item.present;
         const cardBg = isPres
           ? 'bg-emerald-50/90 border-emerald-500 shadow-md ring-2 ring-emerald-500/20'
@@ -805,7 +829,18 @@
     }
 
     container.innerHTML = visibleItems
-      .map(({ item, idx }) => {
+      .map(({ item: rawItem, idx }) => {
+        const item = {
+          ...rawItem,
+          pageNumber: Number(rawItem.pageNumber) || 1,
+          rank_abbr: htmlSafe(rawItem.rank_abbr),
+          full_rank: htmlSafe(rawItem.full_rank),
+          war_name: htmlSafe(rawItem.war_name),
+          full_name: htmlSafe(rawItem.full_name),
+          cargo: htmlSafe(rawItem.cargo),
+          photo: imageSafe(rawItem.photo),
+          reviewReasons: Array.isArray(rawItem.reviewReasons) ? rawItem.reviewReasons.map(htmlSafe) : []
+        };
         const isPending = !!item.needsReview;
         const borderClass = isPending
           ? 'border-amber-400 bg-amber-50/40 ring-1 ring-amber-300'
@@ -1776,7 +1811,7 @@
           return;
         }
         state.pdfReview.eventName = String((inputReviewEventName && inputReviewEventName.value)
-            || state.pdfReview.eventName || 'CERIMONIAL BAGL').trim();
+            || state.pdfReview.eventName || 'CERIMONIAL').trim();
         if (replaceSummaryEl) {
           replaceSummaryEl.textContent = `${validItems.length} autoridades serão disponibilizadas para todos os operadores conectados. O carômetro anterior será substituído e as presenças começarão desmarcadas.`;
         }

@@ -1,8 +1,10 @@
 (function () {
-  const URL = 'https://zjeljjgfbqalaxqamjhb.supabase.co/functions/v1/cerimonial-sync-teste';
-  const EVENT = 'cb6220da-e432-47a1-b696-36c486e2f483'; // SOMENTE TESTE
+  const URL = 'https://zjeljjgfbqalaxqamjhb.supabase.co/functions/v1/cerimonial-multi';
+  // O servidor identifica a unidade pela sessão; nenhum ID fixo de carômetro no navegador.
 
-  let session = sessionStorage.getItem('cerimonial_session') || '';
+  let session = sessionStorage.getItem('cerimonial_multi_session') || '';
+  let refreshToken = sessionStorage.getItem('cerimonial_multi_refresh') || '';
+  let account = null;
   let connected = false;
   let admin = false;
   let version = -1;
@@ -16,12 +18,11 @@
   const toast = (msg, kind) => window.showToast ? window.showToast(msg, kind || 'info') : alert(msg);
 
   // Requisição base para a API (Edge Function ou proxy local)
-  async function request(action, extra = {}) {
+  async function request(action, extra = {}, didRetry = false) {
     const ctl = new AbortController();
     const timer = setTimeout(() => ctl.abort(), 20000);
     try {
       const body = {
-        event: EVENT,
         action,
         session,
         ...extra
@@ -36,6 +37,13 @@
       });
 
       const data = await res.json().catch(() => ({}));
+      if (!didRetry && res.status === 401 && session && refreshToken && action !== 'refresh' && action !== 'login' && action !== 'apply_recovery') {
+        try {
+          const refreshed = await request('refresh', { refresh: refreshToken });
+          setAuth(refreshed);
+          return await request(action, extra, true);
+        } catch (_) { /* sessão efetivamente expirada */ }
+      }
       if (!res.ok) {
         const err = new Error(data.error || `Erro de sincronização (${res.status})`);
         err.status = res.status;
@@ -47,11 +55,25 @@
     }
   }
 
+  function setAuth(data) {
+    session = data.token || '';
+    refreshToken = data.refresh || '';
+    if (data.account) account = data.account;
+    sessionStorage.setItem('cerimonial_multi_session', session);
+    sessionStorage.setItem('cerimonial_multi_refresh', refreshToken);
+  }
+  function clearAuth() {
+    session = ''; refreshToken = ''; account = null; connected = false;
+    sessionStorage.removeItem('cerimonial_multi_session');
+    sessionStorage.removeItem('cerimonial_multi_refresh');
+  }
+
   // Aplica dados do carômetro recebidos do servidor
   async function apply(data) {
     if (!data.items || !data.items.length) {
       app.authorities = [];
-      app.eventName = data.name || 'CERIMONIAL BAGL - TESTE ISOLADO';
+      app.manualCounter = 0;
+      app.eventName = data.name || 'CERIMONIAL ' + (account ? account.login : '');
       redraw();
       updateStatusBadge('online', '● Conectado (Sem carômetro)');
       setClearVisible(false);
@@ -61,7 +83,7 @@
     app.eventName = data.name || app.eventName;
     app.manualCounter = app.authorities.filter((a) => a.isManual).length;
     redraw();
-    updateStatusBadge('online', '● Sincronizado (BAGL)');
+    updateStatusBadge('online', '● Sincronizado (' + (account ? account.login : '') + ')');
     setClearVisible(true);
   }
 
@@ -95,20 +117,20 @@
         admin = !!data.admin;
         await apply(data);
       } else {
-        updateStatusBadge('online', app.authorities.length ? '● Sincronizado (BAGL)' : '● Conectado (Sem carômetro)');
+        updateStatusBadge('online', app.authorities.length ? '● Sincronizado (' + (account ? account.login : '') + ')' : '● Conectado (Sem carômetro)');
         setClearVisible(app.authorities.length > 0);
       }
     } catch (e) {
       if (e.status === 401) {
         connected = false; session = ''; admin = false; version = -1;
-        sessionStorage.removeItem('cerimonial_session'); stopPolling();
+        clearAuth(); stopPolling();
         showLoginModal(true); updateUserHeaderBadge(false);
         updateStatusBadge('disconnected', '○ Sessão expirada — faça login');
         return;
       }
       isOffline = true;
       updateStatusBadge('offline', '⚠ Sem conexão — operações indisponíveis');
-      console.warn('[CerimonialSync] Servidor inacessível, operando offline:', e.message);
+      console.warn('[CerimonialSync] Sem conexão com o servidor:', e.message);
     } finally {
       busy = false;
       if (pendingForce) {
@@ -130,7 +152,17 @@
   // Conecta e inicializa o carômetro a partir da sessão
   async function connectWithSession() {
     try {
-      updateStatusBadge('busy', '⟳ Conectando ao BAGL...');
+      updateStatusBadge('busy', '⟳ Validando conta...');
+      account = await request('whoami');
+      if (account.role === 'master') {
+        connected = true; isOffline = false; version = -1;
+        app.authorities = []; redraw();
+        showLoginModal(false); updateUserHeaderBadge(true);
+        updateStatusBadge('online','● Administrador Master');
+        stopPolling();
+        window.CerimonialAccounts?.showMaster();
+        return;
+      }
       const data = await request('read');
       connected = true;
       isOffline = false;
@@ -147,8 +179,7 @@
       console.error('[CerimonialSync] Falha na conexão com a sessão:', e);
       connected = false;
       stopPolling();
-      sessionStorage.removeItem('cerimonial_session');
-      session = '';
+      clearAuth();
       showLoginModal(true);
       updateUserHeaderBadge(false);
       updateStatusBadge('disconnected', '○ Faça login para continuar');
@@ -160,11 +191,10 @@
   async function login(username, password) {
     const res = await request('login', { username, password });
     if (res.token) {
-      session = res.token;
-      sessionStorage.setItem('cerimonial_session', session);
+      setAuth(res);
       await connectWithSession();
       if (!connected) throw new Error('Não foi possível carregar o carômetro do servidor.');
-      toast('Ambiente BAGL de teste conectado!', 'success');
+      toast('Acesso autorizado: ' + (account ? account.login : username), 'success');
       return true;
     }
     throw new Error('Falha ao autenticar.');
@@ -172,17 +202,17 @@
 
   // Logout da sessão
   function logout() {
-    if (confirm('Deseja realmente sair da sessão do Cerimonial BAGL neste dispositivo?')) {
-      sessionStorage.removeItem('cerimonial_session');
-      session = '';
+    if (confirm('Deseja realmente sair da sua conta neste dispositivo?')) {
+      clearAuth();
       connected = false;
       admin = false;
       version = -1;
       stopPolling();
-      if (app) { app.authorities = []; redraw(); }
+      if (app) { app.authorities = []; app.eventName = 'EVENTO CERIMONIAL'; redraw(); }
       updateUserHeaderBadge(false);
       showLoginModal(true);
       updateStatusBadge('disconnected', '○ Desconectado');
+      window.CerimonialAccounts?.hideMaster();
       toast('Sessão encerrada.');
     }
   }
@@ -212,7 +242,7 @@
       const { tempId, candidatePhoto, candidateImageId, rawLines, ...data } = item;
       return {
         ...data,
-        id: `bagl-${String(index + 1).padStart(4, '0')}`,
+        id: `autoridade-${String(index + 1).padStart(4, '0')}`,
         order: index + 1,
         present: false,
         checkedTime: null
@@ -267,7 +297,13 @@
   function updateUserHeaderBadge(show) {
     const badge = document.getElementById('sync-user-badge-container');
     if (badge) {
-      if (show) badge.classList.remove('hidden');
+      if (show) {
+        badge.classList.remove('hidden');
+        const masterButton = document.getElementById('cerimonial-master-open');
+        if (masterButton) masterButton.style.display = account?.role === 'master' ? '' : 'none';
+        const el = document.getElementById('sync-logged-user');
+        if (el && account) el.textContent = account.login;
+      }
       else badge.classList.add('hidden');
       setClearVisible(show && !!(app && app.authorities && app.authorities.length));
     }
@@ -345,7 +381,7 @@
           }
         } finally {
           if (btnSpinner) btnSpinner.classList.add('hidden');
-          if (btnLabel) btnLabel.textContent = 'Acessar Cerimonial BAGL';
+          if (btnLabel) btnLabel.textContent = 'Acessar Cerimonial';
           if (btnSubmit) btnSubmit.disabled = false;
         }
       };
@@ -359,8 +395,13 @@
     const btnClear = document.getElementById('btn-clear-shared-carometro');
     if (btnClear) btnClear.onclick = clearCarometro;
 
+    // Funcionalidades de contas e recuperação vinculadas à mesma sessão.
+    window.CerimonialAccounts?.init();
+
     // Se já houver sessão ativa, inicializa automaticamente
-    if (session) {
+    if (window.location.hash.includes('type=recovery')) {
+      showLoginModal(true);
+    } else if (session) {
       connectWithSession().catch(() => {});
     } else {
       showLoginModal(true);
@@ -378,6 +419,11 @@
     logout,
     refresh,
     isConnected: () => connected,
-    isOffline: () => isOffline
+    isOffline: () => isOffline,
+    request,
+    account: () => account,
+    useRecoveryToken(token) { session = token; },
+    clearRecoveryToken() { clearAuth(); },
+    closeLogin() { showLoginModal(false); }
   };
 })();
