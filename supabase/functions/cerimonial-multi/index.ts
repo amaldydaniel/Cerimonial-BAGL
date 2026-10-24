@@ -6,6 +6,11 @@ const SERVICE = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
 const ANON = Deno.env.get('SUPABASE_ANON_KEY') || '';
 const ORIGINS = new Set(['https://amaldydaniel.github.io','http://127.0.0.1:8081','http://localhost:8081']);
 const REDIRECT = 'https://amaldydaniel.github.io/Cerimonial-BAGL/';
+const RECOVERY_REDIRECTS: Record<string,string> = {
+  'http://127.0.0.1:8081': 'http://127.0.0.1:8081/',
+  'http://localhost:8081': 'http://localhost:8081/',
+  'https://amaldydaniel.github.io': REDIRECT
+};
 const encoder = new TextEncoder();
 const headers = (origin: string) => ({
   'Access-Control-Allow-Origin': ORIGINS.has(origin) ? origin : 'null',
@@ -55,8 +60,9 @@ async function passwordAuth(email: string, password: string) {
   });
   return r.ok?await r.json():null;
 }
-async function sendRecovery(email: string) {
-  const r=await fetch(ROOT+'/auth/v1/recover?redirect_to='+encodeURIComponent(REDIRECT),{
+async function sendRecovery(email: string, origin: string) {
+  const redirect=RECOVERY_REDIRECTS[origin] || REDIRECT;
+  const r=await fetch(ROOT+'/auth/v1/recover?redirect_to='+encodeURIComponent(redirect),{
     method:'POST',headers:{'apikey':ANON,'Content-Type':'application/json'},
     body:JSON.stringify({email})
   });
@@ -118,7 +124,7 @@ Deno.serve(async (req: Request) => {
       if(!validLogin(body.username))return reply({error:'Solicitação inválida'},400,origin);
       const g=await rpc('recovery_guard',{p_login:body.username,p_ip_digest:await digestIp(req)});
       if(!g.allowed)return reply({error:'Aguarde antes de solicitar outro link. Contate o administrador se necessário.',reason:g.reason},429,origin);
-      await sendRecovery(g.email);
+      await sendRecovery(g.email,origin);
       return reply({sent:true},200,origin);
     }
     const token=typeof body.session==='string'?body.session:'';
