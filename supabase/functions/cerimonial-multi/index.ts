@@ -38,7 +38,14 @@ async function authAdmin(path: string, method: 'POST'|'PUT'|'DELETE', body?: unk
   const r = await fetch(ROOT+'/auth/v1/admin/'+path,{method,headers:authHeaders(SERVICE),
     body:body===undefined?undefined:JSON.stringify(body)});
   const value=await r.json().catch(()=>({}));
-  if(!r.ok) { console.error('cerimonial-multi admin',method,path,r.status); throw new Error('Falha ao administrar usuário'); }
+  if(!r.ok) {
+    const code=String(value?.code||value?.error_code||'');
+    console.error('cerimonial-multi admin',method,path,r.status,code);
+    if(code==='email_exists')throw Object.assign(new Error('Este e-mail já está cadastrado em outra conta. Use um e-mail exclusivo da unidade.'),{status:409});
+    if(code==='weak_password'||code==='password_too_short')throw Object.assign(new Error('A senha não atende aos requisitos do Supabase. Informe uma senha mais forte.'),{status:422});
+    if(r.status===422)throw Object.assign(new Error('Dados recusados pelo Supabase. Confira o e-mail e a política de senha.'),{status:422});
+    throw new Error('Não foi possível administrar a conta.');
+  }
   return value;
 }
 async function passwordAuth(email: string, password: string) {
@@ -169,6 +176,17 @@ Deno.serve(async (req: Request) => {
       return reply(await rpc(action==='admin_active'?'set_active':'reset_recovery',
         action==='admin_active'?{...p,p_active:!!body.active}:p),200,origin);
     }
+    if(action==='admin_update_name') {
+      if(mine.role!=='master'||!validLogin(body.login))return reply({error:'Acesso restrito'},403,origin);
+      const name=typeof body.name==='string'?body.name.trim():'';
+      if(name.length<2||name.length>120)return reply({error:'Nome da unidade inválido'},400,origin);
+      const r=await fetch(ROOT+'/rest/v1/rpc/cerimonial_admin_editar_nome',{
+        method:'POST',headers:authHeaders(SERVICE),
+        body:JSON.stringify({p_actor:user.id,p_login:body.login,p_nome:name})
+      });
+      if(!r.ok)throw new Error('Não foi possível atualizar o nome da unidade.');
+      return reply(await r.json(),200,origin);
+    }
     if(action==='admin_reset_password'||action==='admin_set_email') {
       if(mine.role!=='master'||!validLogin(body.login))return reply({error:'Acesso restrito'},403,origin);
       const target=await rpc('master_target',{p_actor:user.id,p_login:body.login});
@@ -195,6 +213,8 @@ Deno.serve(async (req: Request) => {
     return reply({error:'Ação inválida'},400,origin);
   } catch(e) {
     console.error('cerimonial-multi request',{name:e instanceof Error?e.name:'unknown'});
-    return reply({error:'Não foi possível concluir esta operação'},400,origin);
+    const message=e instanceof Error?e.message:'Não foi possível concluir esta operação';
+    const status=Number((e as {status?:number})?.status)||400;
+    return reply({error:message},status,origin);
   }
 });
