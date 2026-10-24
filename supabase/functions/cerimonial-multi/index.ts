@@ -93,10 +93,37 @@ Deno.serve(async (req: Request) => {
         return reply({error:'Usuário ou senha incorretos'},401,origin);
       const found=await rpc('login_lookup',{p_login:body.username});
       if(!found.found)return reply({error:'Usuário ou senha incorretos'},401,origin);
+      // Limite global por conta, persistente no banco e compartilhado entre dispositivos.
+      // Cinco senhas erradas bloqueiam NOVOS logins por 15 minutos.
+      const loginGuard=async(phase:'precheck'|'failure'|'success')=>{
+        const response=await fetch(ROOT+'/rest/v1/rpc/cerimonial_login_guard',{
+          method:'POST',headers:authHeaders(SERVICE),
+          body:JSON.stringify({p_login:body.username,p_action:phase,p_actor:null})
+        });
+        if(!response.ok)throw new Error('Não foi possível validar o limite de tentativas. Tente novamente.');
+        return response.json();
+      };
+      const lockMessage='Acesso temporariamente bloqueado após 5 tentativas incorretas. Aguarde 15 minutos ou recupere a senha.';
+      const before=await loginGuard('precheck');
+      if(!before.allowed) {
+        return reply({error:before.reason==='locked'?lockMessage:'Usuário ou senha incorretos',
+          locked:before.reason==='locked',retrySeconds:before.retry_seconds??null},
+          before.reason==='locked'?429:401,origin);
+      }
       const auth=await passwordAuth(found.email,body.password);
-      if(!auth?.access_token)return reply({error:'Usuário ou senha incorretos'},401,origin);
+      if(!auth?.access_token) {
+        const failed=await loginGuard('failure');
+        if(failed.reason==='locked')return reply({error:lockMessage,locked:true,
+          retrySeconds:failed.retry_seconds??900},429,origin);
+        const remaining=Math.max(0,Number(failed.remaining??0));
+        return reply({error:'Usuário ou senha incorretos. Restam '+remaining+
+          (remaining===1?' tentativa.':' tentativas.')},401,origin);
+      }
       const user=await authUser(auth.access_token);
       if(!user)return reply({error:'Autenticação inválida'},401,origin);
+      const checked=await loginGuard('success');
+      if(!checked.allowed)return reply({error:lockMessage,locked:true,
+        retrySeconds:checked.retry_seconds??null},429,origin);
       const account=await rpc('whoami',{p_actor:user.id});
       return reply({token:auth.access_token,refresh:auth.refresh_token,
         expiresIn:auth.expires_in,account},200,origin);
@@ -138,6 +165,15 @@ Deno.serve(async (req: Request) => {
         body:JSON.stringify({password:body.newPassword})
       });
       if(!r.ok)return reply({error:'Não foi possível atualizar a senha. Confira os requisitos do Auth.'},400,origin);
+      // Recuperação autenticada do próprio titular encerra também o bloqueio de login.
+      const logged=await rpc('whoami',{p_actor:user.id});
+      if(logged?.login){
+        const unlocked=await fetch(ROOT+'/rest/v1/rpc/cerimonial_login_guard',{
+          method:'POST',headers:authHeaders(SERVICE),
+          body:JSON.stringify({p_login:logged.login,p_action:'recovered',p_actor:user.id})
+        });
+        if(!unlocked.ok)console.error('cerimonial-multi recovery unlock',unlocked.status);
+      }
       return reply({ok:true},200,origin);
     }
     const mine=await rpc('whoami',{p_actor:user.id});
