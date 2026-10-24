@@ -77,7 +77,7 @@
    */
   function updateHeaderEventBadge() {
     const badgeEl = document.getElementById('header-event-badge');
-    const cleanEvent = String(state.eventName || 'EVENTO CERIMONIAL').trim().toUpperCase();
+    const cleanEvent = String(state.eventName || 'EVENTO CERIMONIAL').trim();
     if (badgeEl) {
       badgeEl.textContent = `BAGL • ${cleanEvent}`;
     }
@@ -150,41 +150,13 @@
    * Alterna a confirmação de presença da autoridade
    */
   window.togglePresence = async function (id) {
-    const item = state.authorities.find((a) => a.id === id);
+    const item = state.authorities.find((a) => String(a.id) === String(id));
     if (!item) return;
-    if (window.CerimonialSync && window.CerimonialSync.isConnected()) {
-      await window.CerimonialSync.presence(item);
+    if (!window.CerimonialSync || !window.CerimonialSync.isConnected()) {
+      window.showToast('Faça login para registrar presenças.', 'warning');
       return;
     }
-    item.present = !item.present;
-    if (item.present) {
-      item.checkedTime = new Date().toLocaleTimeString('pt-BR', {
-        hour: '2-digit',
-        minute: '2-digit'
-      });
-      window.showToast(
-        `Presença confirmada: ${item.rank_abbr || ''} ${item.war_name || item.full_name}`
-      );
-    } else {
-      delete item.checkedTime;
-    }
-
-    updateCounters();
-    renderCards();
-    window.CerimonialNominata.renderNominata(state);
-
-    try {
-      await window.CerimonialDB.updateAuthorityInIndexedDB(item, state.manualCounter);
-      window.CerimonialDB.saveState(
-        state.authorities,
-        state.manualCounter,
-        state.eventName,
-        state.sourcePdfName
-      );
-    } catch (err) {
-      console.error('Erro ao salvar presença:', err);
-      window.showToast('Falha ao gravar presença no banco local!', 'error');
-    }
+    await window.CerimonialSync.presence(item);
   };
 
   /**
@@ -493,7 +465,7 @@
 
         return `
           <div 
-            onclick="togglePresence(${item.id})" 
+            onclick="togglePresence(this.dataset.authorityId)" 
             data-authority-id="${item.id}"
             data-authority-order="${item.order}"
             class="card-tap-scale cursor-pointer select-none rounded-xl border p-3 flex flex-col justify-between transition-all duration-150 ${cardBg} relative overflow-hidden group"
@@ -564,35 +536,9 @@
               </div>
             </div>
 
-            <!-- Footer: Quick indicator + Independent Edit/Delete Actions -->
+            <!-- Registro de chegada: o cartão inteiro alterna presença no servidor -->
             <div class="mt-2.5 pt-2 border-t border-black/5 flex items-center justify-between text-[11px] gap-1">
-              <span class="text-slate-400 truncate">
-                ${item.checkedTime ? `Chegada: ${item.checkedTime}` : 'Toque para marcar'}
-              </span>
-
-              <div class="flex items-center gap-1 flex-shrink-0" onclick="event.stopPropagation()">
-                <button
-                  type="button"
-                  onclick="openEditAuthorityModal(${item.id}, event)"
-                  class="px-2 py-0.5 rounded bg-slate-100 hover:bg-[#0B1D3A] text-slate-600 hover:text-white font-medium transition flex items-center gap-1 border border-slate-200"
-                  title="Editar dados, foto ou posição desta autoridade"
-                >
-                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15.232 5.232l3.536 3.536m-2.036-5.036a2.5 2.5 0 113.536 3.536L6.5 21.036H3v-3.572L16.732 3.732z"/>
-                  </svg>
-                  <span>Editar</span>
-                </button>
-                <button
-                  type="button"
-                  onclick="openDeleteAuthorityModal(${item.id}, event)"
-                  class="p-1 rounded bg-slate-100 hover:bg-rose-600 text-slate-500 hover:text-white transition border border-slate-200"
-                  title="Excluir esta autoridade"
-                >
-                  <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16"/>
-                  </svg>
-                </button>
-              </div>
+              <span class="text-slate-500 truncate">${item.checkedTime ? `Chegada: ${item.checkedTime}` : 'Toque para marcar presença'}</span>
             </div>
 
           </div>
@@ -1397,6 +1343,9 @@
         renderCards();
         window.CerimonialNominata.renderNominata(state);
         window.showToast('Backup restaurado com sucesso!', 'success');
+        if (window.CerimonialSync && window.CerimonialSync.isConnected()) {
+          window.CerimonialSync.autoPublish();
+        }
       });
     }
 
@@ -1682,6 +1631,9 @@
 
     if (btnImportPdf && inputImportPdf) {
       btnImportPdf.addEventListener('click', () => {
+        if (!window.CerimonialSync || !window.CerimonialSync.isConnected()) {
+          window.showToast('Faça login para importar carômetro.', 'warning'); return;
+        }
         inputImportPdf.value = '';
         inputImportPdf.click();
       });
@@ -1719,7 +1671,7 @@
     const previewReviewBadge = document.getElementById('preview-review-event-badge');
     if (inputReviewEventName) {
       inputReviewEventName.addEventListener('input', (e) => {
-        const val = String(e.target.value || '').trim().toUpperCase();
+        const val = String(e.target.value || '').trim();
         if (state.pdfReview) {
           state.pdfReview.eventName = val || 'EVENTO CERIMONIAL';
         }
@@ -1803,175 +1755,70 @@
     if (btnClosePdfReview) btnClosePdfReview.addEventListener('click', cancelPdfReview);
     if (btnCancelPdfReview) btnCancelPdfReview.addEventListener('click', cancelPdfReview);
 
-    // Avançar para confirmação final de substituição do carômetro (gerando backup prévio obrigatório)
+    // Publicação simplificada: revisar PDF, confirmar, gravar no servidor de teste.
     const btnProceedReplace = document.getElementById('btn-proceed-replace-carometro');
     const modalConfirmReplace = document.getElementById('modal-confirm-replace-carometro');
     const btnCancelFinalReplace = document.getElementById('btn-cancel-final-replace');
     const btnExecuteFinalReplace = document.getElementById('btn-execute-final-replace');
-    const btnDownloadPreReplaceBackup = document.getElementById('btn-download-pre-replace-backup');
     const replaceSummaryEl = document.getElementById('replace-carometro-summary');
-    const replaceBackupStatusEl = document.getElementById('replace-backup-status-text');
 
     if (btnProceedReplace && modalConfirmReplace) {
       btnProceedReplace.addEventListener('click', () => {
         if (!state.pdfReview) return;
-
-        const validItems = state.pdfReview.items.filter(
-          (it) => String(it.full_name || it.war_name || '').trim().length > 0
-        );
-
-        if (validItems.length === 0) {
-          window.showToast(
-            'Inclua ou preencha ao menos uma autoridade válida antes de substituir o carômetro.',
-            'warning'
-          );
+        if (!window.CerimonialSync || !window.CerimonialSync.isConnected()) {
+          window.showToast('Faça login antes de importar o carômetro.', 'warning');
           return;
         }
-
-        const newEventName =
-          String(
-            (inputReviewEventName && inputReviewEventName.value) || state.pdfReview.eventName || 'EVENTO CERIMONIAL'
-          )
-            .trim()
-            .toUpperCase() || 'EVENTO CERIMONIAL';
-        state.pdfReview.eventName = newEventName;
-
-        // 1. Se já existir um evento carregado no dispositivo, gerar automaticamente o backup JSON recuperável antes da substituição
-        if (state.authorities.length > 0) {
-          const backupResult = window.CerimonialDB.exportBackupJSON(
-            state.authorities,
-            state.manualCounter,
-            state.eventName,
-            state.sourcePdfName,
-            { prefix: 'Backup_Pre_Substituicao_BAGL', silent: true }
-          );
-          state.pdfReview.preReplaceBackupGenerated = !!(backupResult && backupResult.success);
-          state.pdfReview.preReplaceBackupFilename = (backupResult && backupResult.filename) || '';
-        } else {
-          state.pdfReview.preReplaceBackupGenerated = true;
-          state.pdfReview.preReplaceBackupFilename = 'Base inicial vazia (nenhum evento anterior a substituir)';
+        const validItems = state.pdfReview.items.filter(it =>
+          String(it.full_name || it.war_name || '').trim().length > 0);
+        if (!validItems.length) {
+          window.showToast('Inclua ao menos uma autoridade válida.', 'warning');
+          return;
         }
-
+        state.pdfReview.eventName = String((inputReviewEventName && inputReviewEventName.value)
+            || state.pdfReview.eventName || 'CERIMONIAL BAGL').trim();
         if (replaceSummaryEl) {
-          if (state.authorities.length > 0) {
-            replaceSummaryEl.innerHTML = `O carômetro atual (<strong>BAGL • ${state.eventName}</strong>, com ${state.authorities.length} registros) será substituído pelo novo evento <strong>BAGL • ${newEventName}</strong> contendo <strong>${validItems.length} autoridades</strong>.<br>Todas as autoridades iniciarão com <strong>zero presenças</strong>.`;
-          } else {
-            replaceSummaryEl.innerHTML = `O novo carômetro do evento <strong>BAGL • ${newEventName}</strong> contendo <strong>${validItems.length} autoridades</strong> será carregado neste dispositivo.<br>Todas as autoridades iniciarão com <strong>zero presenças</strong>.`;
-          }
+          replaceSummaryEl.textContent = `${validItems.length} autoridades serão disponibilizadas para todos os operadores conectados. O carômetro anterior será substituído e as presenças começarão desmarcadas.`;
         }
-
-        if (replaceBackupStatusEl) {
-          if (state.authorities.length === 0) {
-            replaceBackupStatusEl.innerHTML = `Não havia carômetro anterior carregado neste dispositivo. Pronto para gravar o novo evento.`;
-          } else if (state.pdfReview.preReplaceBackupGenerated) {
-            replaceBackupStatusEl.innerHTML = `Backup automático gerado: <strong>${state.pdfReview.preReplaceBackupFilename}</strong> (${state.authorities.length} registros preservados).`;
-          } else {
-            replaceBackupStatusEl.innerHTML = `Clique no botão abaixo para salvar o backup do evento atual antes de prosseguir.`;
-          }
-        }
-
         modalConfirmReplace.classList.remove('hidden');
       });
     }
-
-    if (btnDownloadPreReplaceBackup) {
-      btnDownloadPreReplaceBackup.addEventListener('click', () => {
-        const res = window.CerimonialDB.exportBackupJSON(
-          state.authorities,
-          state.manualCounter,
-          state.eventName,
-          state.sourcePdfName,
-          { prefix: 'Backup_Pre_Substituicao_BAGL' }
-        );
-        if (state.pdfReview && res && res.success) {
-          state.pdfReview.preReplaceBackupGenerated = true;
-          state.pdfReview.preReplaceBackupFilename = res.filename;
-        }
-      });
-    }
-
     if (btnCancelFinalReplace && modalConfirmReplace) {
-      btnCancelFinalReplace.addEventListener('click', () => {
-        modalConfirmReplace.classList.add('hidden');
-      });
+      btnCancelFinalReplace.addEventListener('click', () => modalConfirmReplace.classList.add('hidden'));
     }
-
     if (btnExecuteFinalReplace) {
       btnExecuteFinalReplace.addEventListener('click', async () => {
-        if (!state.pdfReview) return;
-
-        // Garantir que o backup prévio foi gerado e confirmado antes de substituir
-        if (!state.pdfReview.preReplaceBackupGenerated) {
-          const retryBackup = window.CerimonialDB.exportBackupJSON(
-            state.authorities,
-            state.manualCounter,
-            state.eventName,
-            state.sourcePdfName,
-            { prefix: 'Backup_Pre_Substituicao_BAGL', silent: true }
-          );
-          if (!retryBackup || !retryBackup.success) {
-            window.showToast(
-              'Por segurança, não foi possível gerar o backup do evento anterior. Exporte o backup manualmente antes de substituir.',
-              'error'
-            );
-            return;
-          }
-          state.pdfReview.preReplaceBackupGenerated = true;
-        }
-
-        const validItems = state.pdfReview.items.filter(
-          (it) => String(it.full_name || it.war_name || '').trim().length > 0
-        );
-
+        if (!state.pdfReview || btnExecuteFinalReplace.disabled) return;
+        const validItems = state.pdfReview.items.filter(it =>
+          String(it.full_name || it.war_name || '').trim().length > 0);
+        btnExecuteFinalReplace.disabled = true;
+        const previousLabel = btnExecuteFinalReplace.textContent;
+        btnExecuteFinalReplace.textContent = 'Enviando ao servidor...';
         try {
-          const replaced = await window.CerimonialDB.replaceCarometroTransaction(
-            validItems,
-            state.pdfReview.eventName,
-            state.pdfReview.filename
-          );
-
-          state.authorities = window.CerimonialNominata.getSortedAuthorities(replaced.authorities);
-          state.manualCounter = 0;
-          state.eventName = replaced.eventName;
-          state.sourcePdfName = replaced.sourcePdfName;
+          await window.CerimonialSync.publish(validItems, state.pdfReview.eventName);
           state.filter = 'all';
           state.searchQuery = '';
           state.pdfReview = null;
-
-          const modalReview = document.getElementById('modal-pdf-review');
           if (modalConfirmReplace) modalConfirmReplace.classList.add('hidden');
+          const modalReview = document.getElementById('modal-pdf-review');
           if (modalReview) modalReview.classList.add('hidden');
-
-          updateCounters();
-          renderCards();
+          updateCounters(); renderCards();
           window.CerimonialNominata.renderNominata(state);
-          window.showToast(
-            `Novo carômetro confirmado: BAGL • ${state.eventName} (${state.authorities.length} autoridades, 0 presentes)!`,
-            'success'
-          );
         } catch (err) {
-          console.error('Erro ao substituir carômetro:', err);
-          window.showToast(
-            err.message || 'Falha ao substituir carômetro. O evento anterior foi mantido.',
-            'error'
-          );
+          window.showToast(err.message || 'Falha ao publicar o carômetro no servidor.', 'error');
+        } finally {
+          btnExecuteFinalReplace.disabled = false;
+          btnExecuteFinalReplace.textContent = previousLabel;
         }
       });
     }
+
   }
 
   // Inicialização da aplicação
   window.addEventListener('DOMContentLoaded', async () => {
-    try {
-      const loaded = await window.CerimonialDB.loadState();
-      state.authorities = window.CerimonialNominata.getSortedAuthorities(loaded.authorities || []);
-      state.manualCounter = loaded.manualCounter || 0;
-      state.eventName = loaded.eventName || 'EVENTO CERIMONIAL';
-      state.sourcePdfName = loaded.sourcePdfName || '';
-    } catch (err) {
-      console.error('Erro ao inicializar dados:', err);
-      window.showToast('Erro ao carregar banco de dados local.', 'error');
-    }
+    // Nenhum dado local é carregado: a lista vem exclusivamente do Supabase após login.
+    state.authorities = [];
 
     setupEvents();
     if (window.CerimonialSync) {
@@ -1984,8 +1831,9 @@
     updateCounters();
     renderCards();
     window.CerimonialNominata.renderNominata(state);
-    if (window.CerimonialPWA && typeof window.CerimonialPWA.initPWA === 'function') {
-      window.CerimonialPWA.initPWA();
+    // Aplicativo exclusivamente online: não registra Service Worker.
+    if ('serviceWorker' in navigator) {
+      navigator.serviceWorker.getRegistrations().then(regs => regs.forEach(r => r.unregister())).catch(() => {});
     }
   });
 })();

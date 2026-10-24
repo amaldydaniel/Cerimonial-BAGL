@@ -1,52 +1,383 @@
-(function(){
-const URL='https://zjeljjgfbqalaxqamjhb.supabase.co/functions/v1/cerimonial-sync';
-const EVENT='a8be272b-8c44-495a-9773-e8fc3241d53a';
-let code=sessionStorage.getItem('cerimonial_code')||'',connected=false,admin=false,version=-1,busy=false,app,redraw,status;
-const toast=(t,k)=>window.showToast?window.showToast(t,k||'info'):alert(t);
-async function request(action,extra={}){
-const ctl=new AbortController(),timer=setTimeout(()=>ctl.abort(),20000);
-try{const r=await fetch(URL,{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({event:EVENT,code,action,...extra}),signal:ctl.signal,cache:'no-store'});
-const data=await r.json();if(!r.ok)throw Error(data.error||'Erro');return data;}finally{clearTimeout(timer);}
-}
-async function apply(data){
-if(!data.items.length){status.textContent='Conectado - aguardando carômetro';return;}
-app.authorities=window.CerimonialNominata.getSortedAuthorities(data.items);
-app.eventName=data.name||app.eventName;
-app.manualCounter=app.authorities.filter(a=>a.isManual).length;
-await window.CerimonialDB.saveState(app.authorities,app.manualCounter,app.eventName,app.sourcePdfName);
-redraw();status.textContent='● Sincronizado';
-}
-async function refresh(force=false){
-if(!connected||busy)return;busy=true;
-try{const v=await request('version');if(force||v.version!==version){const data=await request('read');version=data.version;admin=data.admin;await apply(data);}else status.textContent='● Sincronizado';}
-catch(e){status.textContent='⚠ Sem sincronização';console.error(e);}finally{busy=false;}
-}
-async function connect(saved=false){
-const previous=code;
-if(!saved){const entered=prompt('Código do evento:');if(entered===null)return;code=entered.trim().toUpperCase();}
-try{const data=await request('read');connected=true;admin=data.admin;version=data.version;sessionStorage.setItem('cerimonial_code',code);await apply(data);status.textContent=admin?'● Administrador conectado':'● Operador conectado';if(!saved)toast('Conectado ao evento','success');}
-catch(e){code=saved?'':previous;if(saved)sessionStorage.removeItem('cerimonial_code');status.textContent='○ Sem conexão';if(!saved)toast('Código inválido ou servidor indisponível','error');}
-}
-async function presence(item){
-if(!connected)return false;
-try{status.textContent='⟳ Registrando...';await request('toggle',{id:item.id,present:!item.present});await refresh(true);}
-catch(e){status.textContent='⚠ Presença NÃO registrada';toast('Falha ao registrar presença. Tente novamente.','error');}
-return true;
-}
-async function publish(){
-if(!connected||!admin){toast('Entre com código de administrador','error');return;}
-if(!app.authorities.length){toast('Importe o carômetro antes','error');return;}
-if(!confirm('Substituir TODOS os dados e presenças compartilhados pelo carômetro deste aparelho?'))return;
-try{status.textContent='⟳ Publicando...';const result=await request('upload',{items:app.authorities,name:app.eventName});version=result.version;toast('Carômetro publicado!','success');await refresh(true);}
-catch(e){status.textContent='⚠ Falha ao publicar';toast('Publicação falhou: '+e.message,'error');}
-}
-function init(state,render){
-app=state;redraw=render;const bar=document.createElement('div');
-bar.style.cssText='position:fixed;bottom:10px;left:10px;z-index:9999;display:flex;gap:7px;align-items:center;flex-wrap:wrap;padding:9px;border-radius:9px;background:#17334d;color:white;font:13px Arial;box-shadow:0 2px 12px #0005;max-width:calc(100vw - 20px)';
-status=document.createElement('span');status.textContent='○ Sem conexão';bar.append(status);
-for(const [name,fn] of [['Conectar evento',()=>connect()],['Publicar carômetro',publish]]){
-const b=document.createElement('button');b.type='button';b.textContent=name;b.onclick=fn;b.style.cssText='padding:7px;border-radius:5px;background:white;color:#17334d;cursor:pointer';bar.append(b);}
-document.body.append(bar);if(code)connect(true);setInterval(()=>refresh(),2000);
-}
-window.CerimonialSync={init,presence,isConnected:()=>connected};
+(function () {
+  const URL = 'https://zjeljjgfbqalaxqamjhb.supabase.co/functions/v1/cerimonial-sync-teste';
+  const EVENT = 'cb6220da-e432-47a1-b696-36c486e2f483'; // SOMENTE TESTE
+
+  let session = sessionStorage.getItem('cerimonial_session') || '';
+  let connected = false;
+  let admin = false;
+  let version = -1;
+  let busy = false;
+  let isOffline = false;
+  let app = null;
+  let redraw = null;
+  let statusEl = null;
+  let pollInterval = null;
+
+  const toast = (msg, kind) => window.showToast ? window.showToast(msg, kind || 'info') : alert(msg);
+
+  // Requisição base para a API (Edge Function ou proxy local)
+  async function request(action, extra = {}) {
+    const ctl = new AbortController();
+    const timer = setTimeout(() => ctl.abort(), 20000);
+    try {
+      const body = {
+        event: EVENT,
+        action,
+        session,
+        ...extra
+      };
+
+      const res = await fetch(URL, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(body),
+        signal: ctl.signal,
+        cache: 'no-store'
+      });
+
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        const err = new Error(data.error || `Erro de sincronização (${res.status})`);
+        err.status = res.status;
+        throw err;
+      }
+      return data;
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+
+  // Aplica dados do carômetro recebidos do servidor
+  async function apply(data) {
+    if (!data.items || !data.items.length) {
+      app.authorities = [];
+      app.eventName = data.name || 'CERIMONIAL BAGL - TESTE ISOLADO';
+      redraw();
+      updateStatusBadge('online', '● Conectado (Sem carômetro)');
+      setClearVisible(false);
+      return;
+    }
+    app.authorities = window.CerimonialNominata.getSortedAuthorities(data.items);
+    app.eventName = data.name || app.eventName;
+    app.manualCounter = app.authorities.filter((a) => a.isManual).length;
+    redraw();
+    updateStatusBadge('online', '● Sincronizado (BAGL)');
+    setClearVisible(true);
+  }
+
+  // Atualiza visual do status de sincronização
+  function updateStatusBadge(state, text) {
+    if (!statusEl) return;
+    statusEl.textContent = text;
+    if (state === 'online') {
+      statusEl.className = 'text-xs font-semibold text-emerald-400 flex items-center gap-1.5';
+    } else if (state === 'busy') {
+      statusEl.className = 'text-xs font-semibold text-sky-400 flex items-center gap-1.5';
+    } else if (state === 'offline') {
+      statusEl.className = 'text-xs font-semibold text-amber-400 flex items-center gap-1.5';
+    } else {
+      statusEl.className = 'text-xs font-semibold text-slate-300 flex items-center gap-1.5';
+    }
+  }
+
+  // Fila para chamadas de sincronização forçadas
+  let pendingForce = false;
+  async function doRefresh(force) {
+    busy = true;
+    try {
+      const isForced = force || pendingForce;
+      pendingForce = false;
+      const v = await request('version');
+      isOffline = false;
+      if (isForced || v.version !== version) {
+        const data = await request('read');
+        version = data.version;
+        admin = !!data.admin;
+        await apply(data);
+      } else {
+        updateStatusBadge('online', app.authorities.length ? '● Sincronizado (BAGL)' : '● Conectado (Sem carômetro)');
+        setClearVisible(app.authorities.length > 0);
+      }
+    } catch (e) {
+      if (e.status === 401) {
+        connected = false; session = ''; admin = false; version = -1;
+        sessionStorage.removeItem('cerimonial_session'); stopPolling();
+        showLoginModal(true); updateUserHeaderBadge(false);
+        updateStatusBadge('disconnected', '○ Sessão expirada — faça login');
+        return;
+      }
+      isOffline = true;
+      updateStatusBadge('offline', '⚠ Sem conexão — operações indisponíveis');
+      console.warn('[CerimonialSync] Servidor inacessível, operando offline:', e.message);
+    } finally {
+      busy = false;
+      if (pendingForce) {
+        pendingForce = false;
+        await doRefresh(true);
+      }
+    }
+  }
+
+  async function refresh(force = false) {
+    if (!connected) return;
+    if (busy) {
+      if (force) pendingForce = true;
+      return;
+    }
+    return doRefresh(force);
+  }
+
+  // Conecta e inicializa o carômetro a partir da sessão
+  async function connectWithSession() {
+    try {
+      updateStatusBadge('busy', '⟳ Conectando ao BAGL...');
+      const data = await request('read');
+      connected = true;
+      isOffline = false;
+      admin = !!data.admin;
+      version = data.version;
+
+      // O servidor é a única fonte de dados: nunca publica dados locais automaticamente.
+      await apply(data);
+
+      showLoginModal(false);
+      updateUserHeaderBadge(true);
+      startPolling();
+    } catch (e) {
+      console.error('[CerimonialSync] Falha na conexão com a sessão:', e);
+      connected = false;
+      stopPolling();
+      sessionStorage.removeItem('cerimonial_session');
+      session = '';
+      showLoginModal(true);
+      updateUserHeaderBadge(false);
+      updateStatusBadge('disconnected', '○ Faça login para continuar');
+      throw e;
+    }
+  }
+
+  // Login compartilhado (BAGL)
+  async function login(username, password) {
+    const res = await request('login', { username, password });
+    if (res.token) {
+      session = res.token;
+      sessionStorage.setItem('cerimonial_session', session);
+      await connectWithSession();
+      if (!connected) throw new Error('Não foi possível carregar o carômetro do servidor.');
+      toast('Ambiente BAGL de teste conectado!', 'success');
+      return true;
+    }
+    throw new Error('Falha ao autenticar.');
+  }
+
+  // Logout da sessão
+  function logout() {
+    if (confirm('Deseja realmente sair da sessão do Cerimonial BAGL neste dispositivo?')) {
+      sessionStorage.removeItem('cerimonial_session');
+      session = '';
+      connected = false;
+      admin = false;
+      version = -1;
+      stopPolling();
+      if (app) { app.authorities = []; redraw(); }
+      updateUserHeaderBadge(false);
+      showLoginModal(true);
+      updateStatusBadge('disconnected', '○ Desconectado');
+      toast('Sessão encerrada.');
+    }
+  }
+
+  // Marca presença somente quando o servidor confirma a gravação.
+  async function presence(item) {
+    if (!connected || isOffline) { toast('Sem conexão. Aguarde para registrar a presença.', 'warning'); return false; }
+    try {
+      await request('toggle', { id: item.id, present: !item.present });
+      await refresh(true);
+      return true;
+    } catch (e) {
+      updateStatusBadge('offline', '⚠ Falha ao salvar no servidor');
+      toast('Presença não registrada. Tente novamente.', 'error');
+      return false;
+    }
+  }
+
+  // O carômetro só entra no painel depois de gravado no Supabase.
+  async function publish(items, name) {
+    if (!connected || isOffline) throw new Error('Sem conexão com o servidor.');
+    if (!Array.isArray(items) || !items.length) throw new Error('Carômetro vazio.');
+    // O importador de PDF cria tempId para a revisão, mas o Supabase exige um
+    // campo id não vazio e único por autoridade. A numeração definitiva nasce
+    // somente na publicação, respeitando a ordem revisada de precedência.
+    const normalized = items.map((item, index) => {
+      const { tempId, candidatePhoto, candidateImageId, rawLines, ...data } = item;
+      return {
+        ...data,
+        id: `bagl-${String(index + 1).padStart(4, '0')}`,
+        order: index + 1,
+        present: false,
+        checkedTime: null
+      };
+    });
+    const result = await request('upload', {items: normalized, name});
+    version = -1;
+    await refresh(true);
+    if (!connected || isOffline) throw new Error('Carômetro salvo, mas não foi possível confirmar a atualização.');
+    toast(`Carômetro publicado para todos (${result.count} autoridades).`, 'success');
+    return result;
+  }
+
+  // Compatibilidade com chamadas antigas. Não publica dados locais automaticamente.
+  async function autoPublish() { return false; }
+
+  async function clearCarometro() {
+    if (!connected || isOffline) return false;
+    if (!confirm('Excluir o carômetro compartilhado para TODOS os operadores?')) return false;
+    try {
+      const result = await request('clear');
+      version = -1;
+      await refresh(true);
+      toast('Carômetro excluído para todos os operadores.', 'success');
+      setClearVisible(false);
+      return !!result;
+    } catch {
+      toast('Não foi possível excluir o carômetro.', 'error');
+      return false;
+    }
+  }
+
+  function startPolling() {
+    stopPolling();
+    pollInterval = setInterval(() => refresh(), 2000);
+  }
+
+  function stopPolling() {
+    if (pollInterval) {
+      clearInterval(pollInterval);
+      pollInterval = null;
+    }
+  }
+
+  function showLoginModal(show) {
+    const modal = document.getElementById('modal-shared-login');
+    if (modal) {
+      modal.style.display = show ? 'flex' : 'none';
+    }
+  }
+
+  function updateUserHeaderBadge(show) {
+    const badge = document.getElementById('sync-user-badge-container');
+    if (badge) {
+      if (show) badge.classList.remove('hidden');
+      else badge.classList.add('hidden');
+      setClearVisible(show && !!(app && app.authorities && app.authorities.length));
+    }
+  }
+
+  function setClearVisible(show) {
+    const el = document.getElementById('btn-clear-shared-carometro');
+    if (el) el.style.display = show ? 'block' : 'none';
+  }
+
+  // Inicialização do módulo integrado ao aplicativo
+  function init(state, render) {
+    app = state;
+    redraw = render;
+
+    // Constrói a barra discreta e moderna de status no canto inferior esquerdo
+    const bar = document.createElement('div');
+    bar.id = 'sync-status-bar';
+    bar.style.cssText =
+      'position:fixed;bottom:12px;left:12px;z-index:40;display:flex;align-items:center;gap:8px;padding:6px 12px;border-radius:20px;background:#0B1D3A;color:white;font:12px Arial,sans-serif;box-shadow:0 4px 14px rgba(0,0,0,0.3);border:1px solid #1E3D6B;cursor:pointer;user-select:none;';
+    bar.title = 'Clique para forçar verificação de sincronização agora';
+    bar.onclick = () => {
+      if (connected) {
+        toast('Verificando atualizações no servidor...');
+        refresh(true);
+      }
+    };
+
+    statusEl = document.createElement('span');
+    statusEl.textContent = '○ Conectando...';
+    bar.appendChild(statusEl);
+    document.body.appendChild(bar);
+
+    // Eventos do formulário de login
+    const formLogin = document.getElementById('form-shared-login');
+    const inputUser = document.getElementById('input-shared-login-user');
+    const inputPass = document.getElementById('input-shared-login-pass');
+    const btnSubmit = document.getElementById('btn-shared-login-submit');
+    const btnSpinner = document.getElementById('btn-login-spinner');
+    const btnLabel = document.getElementById('btn-login-label');
+    const errContainer = document.getElementById('login-error-container');
+    const errText = document.getElementById('login-error-text');
+    const btnTogglePass = document.getElementById('btn-toggle-login-pass');
+    const iconPassHidden = document.getElementById('icon-pass-hidden');
+    const iconPassVisible = document.getElementById('icon-pass-visible');
+
+    if (btnTogglePass && inputPass) {
+      btnTogglePass.onclick = () => {
+        const isPass = inputPass.type === 'password';
+        inputPass.type = isPass ? 'text' : 'password';
+        if (iconPassHidden && iconPassVisible) {
+          iconPassHidden.classList.toggle('hidden', isPass);
+          iconPassVisible.classList.toggle('hidden', !isPass);
+        }
+      };
+    }
+
+    if (formLogin) {
+      formLogin.onsubmit = async (e) => {
+        e.preventDefault();
+        const user = inputUser ? inputUser.value : 'BAGL';
+        const pass = inputPass ? inputPass.value : '';
+
+        if (errContainer) errContainer.classList.add('hidden');
+        if (btnSpinner) btnSpinner.classList.remove('hidden');
+        if (btnLabel) btnLabel.textContent = 'Autenticando...';
+        if (btnSubmit) btnSubmit.disabled = true;
+
+        try {
+          await login(user, pass);
+        } catch (err) {
+          if (errContainer && errText) {
+            errText.textContent = err.message || 'Erro ao realizar login.';
+            errContainer.classList.remove('hidden');
+          }
+        } finally {
+          if (btnSpinner) btnSpinner.classList.add('hidden');
+          if (btnLabel) btnLabel.textContent = 'Acessar Cerimonial BAGL';
+          if (btnSubmit) btnSubmit.disabled = false;
+        }
+      };
+    }
+
+    // Botão de Logout no header
+    const btnLogout = document.getElementById('btn-sync-logout');
+    if (btnLogout) {
+      btnLogout.onclick = logout;
+    }
+    const btnClear = document.getElementById('btn-clear-shared-carometro');
+    if (btnClear) btnClear.onclick = clearCarometro;
+
+    // Se já houver sessão ativa, inicializa automaticamente
+    if (session) {
+      connectWithSession().catch(() => {});
+    } else {
+      showLoginModal(true);
+      updateStatusBadge('disconnected', '○ Aguardando login');
+    }
+  }
+
+  window.CerimonialSync = {
+    init,
+    presence,
+    autoPublish,
+    publish,
+    clearCarometro,
+    login,
+    logout,
+    refresh,
+    isConnected: () => connected,
+    isOffline: () => isOffline
+  };
 })();
