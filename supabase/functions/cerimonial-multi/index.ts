@@ -39,7 +39,7 @@ async function authAdmin(path: string, method: 'POST'|'PUT'|'DELETE', body?: unk
     body:body===undefined?undefined:JSON.stringify(body)});
   const value=await r.json().catch(()=>({}));
   if(!r.ok) {
-    const code=String(value?.code||value?.error_code||'');
+    const code=String(value?.error_code||value?.code||'');
     console.error('cerimonial-multi admin',method,path,r.status,code);
     if(code==='email_exists')throw Object.assign(new Error('Este e-mail já está cadastrado em outra conta. Use um e-mail exclusivo da unidade.'),{status:409});
     if(code==='weak_password'||code==='password_too_short')throw Object.assign(new Error('A senha não atende aos requisitos do Supabase. Informe uma senha mais forte.'),{status:422});
