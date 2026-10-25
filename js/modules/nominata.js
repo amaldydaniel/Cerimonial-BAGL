@@ -2,6 +2,13 @@
  * Cerimonial BAGL - Geração, Cópia, Exportação Word e Impressão A4 da Nominata Oficial
  */
 window.CerimonialNominata = (function () {
+  // Texto da nominata é exibido via innerHTML: evita interpretar trechos de PDF como marcação.
+  function htmlSafe(value) {
+    return String(value ?? '').replace(/[&<>"']/g, ch => ({
+      '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;'
+    })[ch]);
+  }
+
   /**
    * Formata a linha cerimonial de uma autoridade
    */
@@ -108,7 +115,7 @@ window.CerimonialNominata = (function () {
             <div class="flex items-start gap-2 text-justify">
               <span class="font-bold select-none text-slate-800 leading-normal">•</span>
               <div class="flex-1 font-serif-doc text-slate-900 leading-relaxed tracking-wide font-medium">
-                ${lineText}
+                ${htmlSafe(lineText)}
               </div>
             </div>
           `;
@@ -123,7 +130,7 @@ window.CerimonialNominata = (function () {
             <div class="flex items-start gap-2 text-justify">
               <span class="font-bold select-none text-slate-800 leading-normal">•</span>
               <div class="flex-1 font-serif-doc leading-relaxed tracking-wide ${bgHighlight}">
-                ${lineText}${marker}
+                ${htmlSafe(lineText)}${marker}
               </div>
             </div>
           `;
