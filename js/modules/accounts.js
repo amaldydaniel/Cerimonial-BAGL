@@ -1,5 +1,5 @@
-/* Cerimonial — conta, recuperação e dashboard exclusivo do Master.
- * O Master nunca recebe operações de carômetro no backend. Esta tela é isolada.
+/* Cerimonial — conta, recuperação e painel de gestão de acessos.
+ * Master e Gestor não recebem operações de carômetro no backend.
  */
 (function () {
   'use strict';
@@ -12,6 +12,7 @@
   let accountList = [];
   let filter = '';
   let fieldCounter = 0;
+  const isMaster = () => window.CerimonialSync.account()?.role === 'master';
 
   function el(tag, text, className='') {
     const node = document.createElement(tag);
@@ -211,8 +212,8 @@ function forgottenLogin() {
     body.appendChild(form);
   }
   function refreshStatistics() {
-    const total=accountList.filter(x=>x.role!=='pending').length;
-    const active=accountList.filter(x=>x.role!=='pending'&&x.active).length;
+    const total=accountList.filter(x=>x.role==='unit').length;
+    const active=accountList.filter(x=>x.role==='unit'&&x.active).length;
     if($('master-total'))$('master-total').textContent=total.toLocaleString('pt-BR');
     if($('master-active'))$('master-active').textContent=active.toLocaleString('pt-BR');
     if($('master-inactive'))$('master-inactive').textContent=(total-active).toLocaleString('pt-BR');
@@ -226,7 +227,9 @@ function forgottenLogin() {
     const initial=el('div',unit.login.slice(0,2),'h-11 w-11 shrink-0 rounded-xl bg-blue-50 border border-blue-100 text-blue-700 flex items-center justify-center font-bold');
     const detail=el('div',null,'min-w-0');
     const top=el('div',null,'flex flex-wrap gap-2 items-center');
-    top.append(el('strong',unit.login,'text-slate-950'),el('span',unit.role==='pending'?'Exclusão pendente':(unit.active?'Ativa':'Inativa'),'px-2 py-0.5 rounded-full text-xs font-semibold '+(unit.active?'text-emerald-700 bg-emerald-50':'text-red-700 bg-red-50')));
+    top.append(el('strong',unit.login,'text-slate-950'));
+    if(unit.role==='manager'||unit.targetRole==='manager')top.append(el('span','Gestor de Usuários','px-2 py-0.5 rounded-full text-xs font-semibold bg-indigo-50 text-indigo-700'));
+    top.append(el('span',unit.role==='pending'?'Exclusão pendente':(unit.active?'Ativa':'Inativa'),'px-2 py-0.5 rounded-full text-xs font-semibold '+(unit.active?'text-emerald-700 bg-emerald-50':'text-red-700 bg-red-50')));
     detail.append(top,el('div',unit.name,'text-sm font-semibold text-slate-600 break-words'),el('div',unit.email,'text-xs text-slate-500 break-all'));
     left.append(initial,detail);row.append(left);
     const gear=button('⚙ Gerenciar',()=>manageUnit(unit),'secondary');
@@ -238,7 +241,7 @@ function forgottenLogin() {
     const container=$('master-units'); if(!container)return;
     container.replaceChildren();
     const matches=accountList.filter(match);
-    const count=$('master-filter-count'); if(count)count.textContent=matches.length.toLocaleString('pt-BR')+' unidade(s)';
+    const count=$('master-filter-count'); if(count)count.textContent=matches.length.toLocaleString('pt-BR')+' conta(s)';
     if(!matches.length){container.append(el('div', accountList.length?'Nenhuma unidade encontrada para esta busca.':'Nenhuma unidade cadastrada. Utilize o formulário para criar a primeira.','p-7 text-center text-sm text-slate-500'));return;}
     const fragment=document.createDocumentFragment();
     matches.slice(0,150).forEach(u=>fragment.appendChild(listRow(u)));
@@ -252,7 +255,8 @@ function forgottenLogin() {
     refreshStatistics();drawRows();
   }
   function manageUnit(unit) {
-    const {shade,body}=panel('Gerenciar unidade — '+unit.login);
+    if(unit.role==='master'||(unit.role==='manager'&&!isMaster())||(unit.targetRole==='manager'&&!isMaster())){toast('Acesso restrito.','error');return;}
+    const {shade,body}=panel('Gerenciar '+(unit.role==='manager'||unit.targetRole==='manager'?'gestor':'unidade')+' — '+unit.login);
     if(unit.role==='pending'){
       body.appendChild(el('p','A exclusão desta unidade está pendente de finalização.','mb-4 text-sm text-slate-600'));
       const finalize=button('Concluir exclusão',async()=>{
@@ -263,15 +267,15 @@ function forgottenLogin() {
       body.appendChild(finalize);
       return;
     }
-    const name=field('Nome da unidade','text',unit.name,{maxLength:120});
+    const name=field(unit.role==='manager'?'Nome do gestor':'Nome da unidade','text',unit.name,{maxLength:120});
     const email=field('E-mail institucional de recuperação','email',unit.email);
     const information=el('div',null,'space-y-3 rounded-xl border border-slate-200 p-4 mb-4');
-    information.append(name.wrap,button('Salvar nome da unidade',async()=>{
+    information.append(name.wrap,button('Salvar nome',async()=>{
       if(name.input.value.trim()===unit.name)return;
       await api('admin_update_name',{login:unit.login,name:name.input.value.trim()});
       await renderMaster();toast('Nome atualizado.','success');
     }));
-    information.append(email.wrap,el('p','Cada conta precisa de um e-mail exclusivo. Somente o Master pode alterá-lo.','text-xs text-slate-500'));
+    information.append(email.wrap,el('p','Cada conta precisa de um e-mail exclusivo. Master e Gestor autorizado podem alterá-lo.','text-xs text-slate-500'));
     information.appendChild(button('Salvar e-mail',async()=>{
       if(email.input.value.trim().toLowerCase()===unit.email.toLowerCase())return;
       if(!window.confirm('Atualizar o e-mail cadastrado da unidade '+unit.login+'?'))return;
@@ -280,13 +284,26 @@ function forgottenLogin() {
     }));
     body.appendChild(information);
 
-    // Operações essenciais; Master não faz gestão de bloqueios regulares.
+    // A alteração de senha só é permitida para contas visíveis e autorizadas no servidor.
     const secure=el('div',null,'space-y-3 rounded-xl border border-slate-200 p-4');
     secure.appendChild(el('h3','Acesso e recuperação','font-semibold'));
-    secure.appendChild(button('Redefinir senha (123456)',async()=>{
-      await api('admin_reset_password',{login:unit.login,password:'123456'});
-      toast('Senha de '+unit.login+' redefinida para 123456. Compartilhe o acesso por canal autorizado.','success');
+    const newPassword=field('Nova senha provisória','password','',{required:true});
+    secure.appendChild(newPassword.wrap);
+    secure.appendChild(button('Redefinir senha',async()=>{
+      const value=newPassword.input.value;
+      if(value.length<6)throw new Error('Informe uma senha de pelo menos 6 caracteres.');
+      if(!window.confirm('Redefinir a senha de '+unit.login+'?'))return;
+      await api('admin_reset_password',{login:unit.login,password:value});
+      newPassword.input.value='';
+      toast('Senha redefinida. Informe a nova senha por canal autorizado.','success');
     }));
+    secure.appendChild(button(unit.active?'Bloquear acesso':'Reativar acesso',async()=>{
+      const next=!unit.active;
+      if(!window.confirm((next?'Reativar':'Bloquear')+' a conta '+unit.login+'?'))return;
+      await api('admin_active',{login:unit.login,active:next});
+      shade.remove();await renderMaster();
+      toast(next?'Conta reativada.':'Conta bloqueada para novos acessos.','success');
+    },unit.active?'danger':'secondary'));
     secure.appendChild(button('Liberar recuperação',async()=>{
       await api('admin_unlock',{login:unit.login});
       toast('Recuperação liberada para '+unit.login+'.','success');
@@ -322,11 +339,11 @@ function forgottenLogin() {
     if(dashboard){return renderMaster().catch(e=>toast(e.message,'error'));}
     dashboard=el('div');dashboard.id='cerimonial-master-dashboard';
     dashboard.style.cssText='position:fixed;inset:0;z-index:99998;overflow-y:auto;background:#f1f5f9;color:#0f172a;';
-    dashboard.setAttribute('aria-label','Administração geral das unidades do Cerimonial');
+    dashboard.setAttribute('aria-label','Administração de usuários e unidades do Cerimonial');
     const top=el('header',null,'bg-[#0B1D3A] text-white shadow-lg');
     const nav=el('div',null,'max-w-7xl mx-auto px-4 sm:px-6 py-5 flex flex-wrap justify-between items-center gap-4');
     const title=el('div');
-    title.append(el('p','CERIMONIAL • ADMINISTRAÇÃO','uppercase tracking-widest text-xs text-blue-300 font-semibold'),el('h1','Painel Master','text-2xl sm:text-3xl font-bold mt-1'),el('p','Gerenciamento exclusivo de unidades e acessos','text-sm text-slate-300 mt-1'));
+    title.append(el('p','CERIMONIAL • ADMINISTRAÇÃO','uppercase tracking-widest text-xs text-blue-300 font-semibold'),el('h1',isMaster()?'Painel Master':'Painel Gestor de Usuários','text-2xl sm:text-3xl font-bold mt-1'),el('p','Gerenciamento de unidades e acessos','text-sm text-slate-300 mt-1'));
     const actions=el('div',null,'flex gap-2 flex-wrap');
     actions.append(button('Alterar minha senha',changePassword,'dark'),button('Fechar painel',()=>hideMaster(),'dark'),button('Sair',()=>window.CerimonialSync.logout(),'dark'));
     nav.append(title,actions);top.appendChild(nav);dashboard.appendChild(top);
@@ -360,7 +377,7 @@ function forgottenLogin() {
     const section=el('section',null,'lg:col-span-2 rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden');
     const sectionHead=el('div',null,'p-5 sm:p-6 border-b border-slate-100');
     const titleRow=el('div',null,'flex flex-wrap items-center justify-between gap-2');
-    const header=el('h2','Unidades cadastradas','text-lg font-bold');
+    const header=el('h2',isMaster()?'Contas cadastradas':'Unidades cadastradas','text-lg font-bold');
     const count=el('span','0 unidade(s)','text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1 rounded-full');count.id='master-filter-count';
     titleRow.append(header,count);
     const search=el('input');search.type='search';search.id='master-search';search.placeholder='⌕ Buscar login, nome ou e-mail...';
@@ -369,7 +386,32 @@ function forgottenLogin() {
     search.addEventListener('input',()=>{filter=search.value.trim().toLocaleLowerCase('pt-BR');drawRows();});
     sectionHead.append(titleRow,search);section.appendChild(sectionHead);
     const rows=el('div');rows.id='master-units';section.appendChild(rows);
-    grid.append(registration,section);main.appendChild(grid);dashboard.appendChild(main);
+    const left=el('div',null,'space-y-5');
+    left.appendChild(registration);
+    if(isMaster()){
+      const managerRegistration=el('section',null,'bg-white border border-indigo-200 rounded-2xl shadow-sm p-5 sm:p-6');
+      managerRegistration.append(el('h2','Cadastrar Gestor de Usuários','font-bold text-lg'),el('p','Pode administrar unidades, mas não vê nem altera a conta Master. Não acessa carômetros.','text-sm text-slate-600 mt-1 mb-5'));
+      const managerForm=el('form',null,'space-y-4');
+      const managerLogin=field('Login do gestor','text','',{placeholder:'Ex.: GESTOR01',required:true,maxLength:20});
+      const managerName=field('Nome do gestor','text','',{required:true,maxLength:120});
+      const managerEmail=field('E-mail exclusivo do gestor','email','',{required:true});
+      const managerPassword=field('Senha inicial','password','',{required:true});
+      managerForm.append(managerLogin.wrap,managerName.wrap,managerEmail.wrap,managerPassword.wrap);
+      const createManager=button('＋ Cadastrar gestor',async()=>{
+        const body={login:managerLogin.input.value.toUpperCase().trim(),name:managerName.input.value.trim(),email:managerEmail.input.value.trim().toLowerCase(),password:managerPassword.input.value};
+        if(!/^[A-Z0-9_-]{2,20}$/.test(body.login)||body.name.length<2||!managerEmail.input.validity.valid||body.password.length<6)
+          throw new Error('Confira o login, nome, e-mail e senha (mínimo de 6 caracteres).');
+        if(!window.confirm('Criar o Gestor de Usuários '+body.login+'?'))return;
+        await api('admin_create_manager',body);
+        managerForm.reset();
+        await renderMaster();toast('Gestor '+body.login+' cadastrado.','success');
+      });
+      managerForm.addEventListener('submit',e=>{e.preventDefault();createManager.click();});
+      managerForm.appendChild(createManager);
+      managerRegistration.appendChild(managerForm);
+      left.appendChild(managerRegistration);
+    }
+    grid.append(left,section);main.appendChild(grid);dashboard.appendChild(main);
     document.body.appendChild(dashboard);
     const status=$('sync-status-bar');if(status)status.style.display='none';
     renderMaster().catch(e=>toast(e.message,'error'));
