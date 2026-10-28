@@ -1,4 +1,4 @@
-// Cerimonial Multiunidades — API de homologação isolada da versão oficial
+// Cerimonial Multiunidades — API de contas, Master e Gestor de Usuários
 // Autenticação via Supabase Auth. Chaves secretas disponíveis SOMENTE no servidor.
 import 'jsr:@supabase/functions-js/edge-runtime.d.ts';
 const ROOT = Deno.env.get('SUPABASE_URL') || '';
@@ -24,6 +24,7 @@ const reply = (obj: unknown, status=200, origin='') =>
 const validLogin = (x: unknown) => typeof x==='string' && /^[A-Z0-9_-]{2,20}$/.test(x.trim().toUpperCase());
 const validEmail = (x: unknown) => typeof x==='string' && x.length<=254 && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(x);
 const validPassword = (x: unknown) => typeof x==='string' && x.length>=4 && x.length<=128;
+const canManageUnits = (role: string) => role==='master' || role==='manager';
 const authHeaders = (key: string) => ({'Content-Type':'application/json','apikey':key,'Authorization':'Bearer '+key});
 async function rpc(action: string, values: Record<string,unknown>={}) {
   const r = await fetch(ROOT+'/rest/v1/rpc/cerimonial_multi_api', {
@@ -191,7 +192,7 @@ Deno.serve(async (req: Request) => {
     }
     if(action==='whoami')return reply(mine,200,origin);
     if(action==='admin_list') {
-      if(mine.role!=='master')return reply({error:'Acesso restrito'},403,origin);
+      if(!canManageUnits(mine.role))return reply({error:'Acesso restrito'},403,origin);
       const units=await rpc('list_units',{p_actor:user.id});
       const response=await fetch(ROOT+'/rest/v1/rpc/cerimonial_admin_exclusoes_pendentes',{
         method:'POST',headers:authHeaders(SERVICE),body:JSON.stringify({p_actor:user.id})
@@ -200,8 +201,9 @@ Deno.serve(async (req: Request) => {
       const pending=await response.json();
       return reply({...units,pending:Array.isArray(pending)?pending:[]},200,origin);
     }
-    if(action==='admin_create') {
-      if(mine.role!=='master')return reply({error:'Acesso restrito'},403,origin);
+    if(action==='admin_create'||action==='admin_create_manager') {
+      if(!canManageUnits(mine.role)||(action==='admin_create_manager'&&mine.role!=='master'))
+        return reply({error:'Acesso restrito'},403,origin);
       const login=String(body.login||'').trim().toUpperCase();
       if(!validLogin(login)||!validEmail(body.email)||!validPassword(body.password)||
           typeof body.name!=='string'||body.name.trim().length<2)
@@ -210,7 +212,8 @@ Deno.serve(async (req: Request) => {
         email:body.email.trim().toLowerCase(),password:body.password,email_confirm:true
       });
       try {
-        const v=await rpc('register_unit',{p_actor:user.id,p_login:login,p_target_uid:created.id,
+        const v=await rpc(action==='admin_create_manager'?'register_manager':'register_unit',{
+          p_actor:user.id,p_login:login,p_target_uid:created.id,
           p_email:body.email,p_nome:body.name});
         return reply(v,201,origin);
       } catch(e) {
@@ -219,13 +222,13 @@ Deno.serve(async (req: Request) => {
       }
     }
     if(action==='admin_active'||action==='admin_unlock') {
-      if(mine.role!=='master'||!validLogin(body.login))return reply({error:'Acesso restrito'},403,origin);
+      if(!canManageUnits(mine.role)||!validLogin(body.login))return reply({error:'Acesso restrito'},403,origin);
       const p={p_actor:user.id,p_login:body.login};
       return reply(await rpc(action==='admin_active'?'set_active':'reset_recovery',
         action==='admin_active'?{...p,p_active:!!body.active}:p),200,origin);
     }
     if(action==='admin_update_name') {
-      if(mine.role!=='master'||!validLogin(body.login))return reply({error:'Acesso restrito'},403,origin);
+      if(!canManageUnits(mine.role)||!validLogin(body.login))return reply({error:'Acesso restrito'},403,origin);
       const name=typeof body.name==='string'?body.name.trim():'';
       if(name.length<2||name.length>120)return reply({error:'Nome da unidade inválido'},400,origin);
       const r=await fetch(ROOT+'/rest/v1/rpc/cerimonial_admin_editar_nome',{
@@ -236,11 +239,11 @@ Deno.serve(async (req: Request) => {
       return reply(await r.json(),200,origin);
     }
     if(action==='admin_delete') {
-      if(mine.role!=='master'||!validLogin(body.login))return reply({error:'Acesso restrito'},403,origin);
+      if(!canManageUnits(mine.role)||!validLogin(body.login))return reply({error:'Acesso restrito'},403,origin);
       const login=String(body.login).trim().toUpperCase();
       if(body.confirmLogin!==login)return reply({error:'Confirme o login exato antes da exclusão.'},400,origin);
       // A operação começa bloqueando imediatamente a unidade. Cada chamada SQL
-      // valida o Master e o tipo de conta; nunca pode apagar outro Master.
+      // valida a hierarquia no banco; Master nunca pode ser alvo de exclusão.
       const deleteRpc=async(phase: 'preparar'|'finalizar',uid?:string)=>{
         const r=await fetch(ROOT+'/rest/v1/rpc/cerimonial_admin_excluir_unidade',{
           method:'POST',headers:authHeaders(SERVICE),
@@ -270,7 +273,7 @@ Deno.serve(async (req: Request) => {
       return reply(final,200,origin);
     }
     if(action==='admin_reset_password'||action==='admin_set_email') {
-      if(mine.role!=='master'||!validLogin(body.login))return reply({error:'Acesso restrito'},403,origin);
+      if(!canManageUnits(mine.role)||!validLogin(body.login))return reply({error:'Acesso restrito'},403,origin);
       const target=await rpc('master_target',{p_actor:user.id,p_login:body.login});
       if(action==='admin_reset_password') {
         if(!validPassword(body.password))return reply({error:'Senha inválida'},400,origin);
