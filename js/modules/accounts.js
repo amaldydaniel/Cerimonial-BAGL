@@ -386,8 +386,7 @@ function forgottenLogin() {
     search.addEventListener('input',()=>{filter=search.value.trim().toLocaleLowerCase('pt-BR');drawRows();});
     sectionHead.append(titleRow,search);section.appendChild(sectionHead);
     const rows=el('div');rows.id='master-units';section.appendChild(rows);
-    const left=el('div',null,'space-y-5');
-    left.appendChild(registration);
+    const left=el('div');
     if(isMaster()){
       const managerRegistration=el('section',null,'bg-white border border-indigo-200 rounded-2xl shadow-sm p-5 sm:p-6');
       managerRegistration.append(el('h2','Cadastrar Gestor de Usuários','font-bold text-lg'),el('p','Pode administrar unidades, mas não vê nem altera a conta Master. Não acessa carômetros.','text-sm text-slate-600 mt-1 mb-5'));
@@ -409,7 +408,59 @@ function forgottenLogin() {
       managerForm.addEventListener('submit',e=>{e.preventDefault();createManager.click();});
       managerForm.appendChild(createManager);
       managerRegistration.appendChild(managerForm);
-      left.appendChild(managerRegistration);
+
+      // Formulários em abas: mantém os dados digitados ao alternar.
+      const registrationTabs=el('div',null,'rounded-2xl bg-white border border-slate-200 shadow-sm overflow-hidden');
+      const tabs=el('div',null,'grid grid-cols-2 border-b border-slate-200 bg-slate-50 p-1.5 gap-1.5');
+      tabs.setAttribute('role','tablist');
+      tabs.setAttribute('aria-label','Tipo de cadastro');
+      const unitTab=el('button','Cadastrar unidade','px-2 py-3 rounded-xl text-xs sm:text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500');
+      const managerTab=el('button','Cadastrar gestor','px-2 py-3 rounded-xl text-xs sm:text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500');
+      unitTab.type=managerTab.type='button';
+      unitTab.id='cerimonial-tab-unidade';
+      managerTab.id='cerimonial-tab-gestor';
+      unitTab.setAttribute('role','tab');
+      managerTab.setAttribute('role','tab');
+      registration.id='cerimonial-panel-unidade';
+      managerRegistration.id='cerimonial-panel-gestor';
+      registration.setAttribute('role','tabpanel');
+      managerRegistration.setAttribute('role','tabpanel');
+      registration.setAttribute('aria-labelledby',unitTab.id);
+      managerRegistration.setAttribute('aria-labelledby',managerTab.id);
+      unitTab.setAttribute('aria-controls',registration.id);
+      managerTab.setAttribute('aria-controls',managerRegistration.id);
+      registration.className='p-5 sm:p-6';
+      managerRegistration.className='p-5 sm:p-6';
+      function selectRegistrationTab(selected) {
+        const unitSelected=selected==='unit';
+        registration.hidden=!unitSelected;
+        managerRegistration.hidden=unitSelected;
+        unitTab.setAttribute('aria-selected',String(unitSelected));
+        managerTab.setAttribute('aria-selected',String(!unitSelected));
+        unitTab.tabIndex=unitSelected?0:-1;
+        managerTab.tabIndex=unitSelected?-1:0;
+        const base='px-2 py-3 rounded-xl text-xs sm:text-sm font-semibold transition focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-blue-500';
+        const active='bg-white text-blue-800 shadow-sm ring-1 ring-blue-200';
+        const inactive='text-slate-600 hover:text-blue-800 hover:bg-white/70';
+        unitTab.className=base+' '+(unitSelected?active:inactive);
+        managerTab.className=base+' '+(unitSelected?inactive:active);
+      }
+      unitTab.addEventListener('click',()=>selectRegistrationTab('unit'));
+      managerTab.addEventListener('click',()=>selectRegistrationTab('manager'));
+      tabs.addEventListener('keydown',e=>{
+        if(!['ArrowLeft','ArrowRight','Home','End'].includes(e.key))return;
+        e.preventDefault();
+        const next=e.key==='Home'?'unit':e.key==='End'?'manager':
+          (document.activeElement===unitTab?'manager':'unit');
+        selectRegistrationTab(next);
+        (next==='unit'?unitTab:managerTab).focus();
+      });
+      tabs.append(unitTab,managerTab);
+      registrationTabs.append(tabs,registration,managerRegistration);
+      left.appendChild(registrationTabs);
+      selectRegistrationTab('unit');
+    } else {
+      left.appendChild(registration);
     }
     grid.append(left,section);main.appendChild(grid);dashboard.appendChild(main);
     document.body.appendChild(dashboard);
