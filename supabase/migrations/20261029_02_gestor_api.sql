@@ -161,7 +161,7 @@ BEGIN
  END IF;
  RAISE EXCEPTION 'Ação desconhecida';
 END;
-$function$
+$function$;
 
 REVOKE EXECUTE ON FUNCTION public.cerimonial_multi_api(text,uuid,text,uuid,text,text,boolean,text,boolean,jsonb,text,text) FROM PUBLIC,anon,authenticated;
 GRANT EXECUTE ON FUNCTION public.cerimonial_multi_api(text,uuid,text,uuid,text,text,boolean,text,boolean,jsonb,text,text) TO service_role;
