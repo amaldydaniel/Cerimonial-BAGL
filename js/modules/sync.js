@@ -297,11 +297,11 @@
     try {
       updateStatusBadge('busy', '⟳ Validando conta...');
       account = await request('whoami');
-      if (account.role === 'master') {
+      if (account.role === 'master' || account.role === 'manager') {
         connected = true; isOffline = false; version = -1;
         app.authorities = []; redraw();
         showLoginModal(false); updateUserHeaderBadge(true);
-        updateStatusBadge('online','● Administrador Master');
+        updateStatusBadge('online',account.role === 'master' ? '● Administrador Master' : '● Gestor de Usuários');
         stopPolling();
         window.CerimonialAccounts?.showMaster();
         return;
@@ -458,7 +458,7 @@
       if (show) {
         badge.classList.remove('hidden');
         const masterButton = document.getElementById('cerimonial-master-open');
-        if (masterButton) masterButton.style.display = account?.role === 'master' ? 'inline-flex' : 'none';
+        if (masterButton) masterButton.style.display = (account?.role === 'master' || account?.role === 'manager') ? 'inline-flex' : 'none';
         const el = document.getElementById('sync-logged-user');
         if (el && account) el.textContent = account.login;
       }
@@ -561,7 +561,7 @@
     const btnMasterOpen = document.getElementById('cerimonial-master-open');
     if (btnMasterOpen) {
       btnMasterOpen.onclick = () => {
-        if (account?.role === 'master') {
+        if (account?.role === 'master' || account?.role === 'manager') {
           window.CerimonialAccounts?.showMaster();
         }
       };
