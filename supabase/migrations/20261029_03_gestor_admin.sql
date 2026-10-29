@@ -27,7 +27,7 @@ BEGIN
   IF NOT FOUND THEN RAISE EXCEPTION 'Unidade não encontrada'; END IF;
   RETURN jsonb_build_object('ok',true,'login',v_login,'name',v_nome);
 END
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.cerimonial_admin_exclusoes_pendentes(p_actor uuid)
@@ -49,7 +49,7 @@ BEGIN
    WHERE role='unit' OR (v_actor_role='master' AND role='manager')
  );
 END;
-$function$
+$function$;
 
 
 CREATE OR REPLACE FUNCTION public.cerimonial_admin_excluir_unidade(p_actor uuid, p_login text, p_fase text, p_uid uuid DEFAULT NULL::uuid)
@@ -109,7 +109,7 @@ BEGIN
    WHERE login=v_login AND auth_user_id=v_pendente.auth_user_id;
  RETURN jsonb_build_object('deleted',true,'login',v_login);
 END;
-$function$
+$function$;
 
 REVOKE EXECUTE ON FUNCTION public.cerimonial_admin_editar_nome(uuid,text,text) FROM PUBLIC,anon,authenticated;
 REVOKE EXECUTE ON FUNCTION public.cerimonial_admin_exclusoes_pendentes(uuid) FROM PUBLIC,anon,authenticated;
